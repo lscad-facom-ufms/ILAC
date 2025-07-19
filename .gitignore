@@ -1,0 +1,17 @@
+# .gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+env/
+venv/
+*.swp
+.DS_Store
+storage/dump/
+storage/executable/
+storage/logs/
+storage/output/
+storage/prof5_results/
+codigos_modificados/

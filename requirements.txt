@@ -1,0 +1,14 @@
+# Bibliotecas básicas para análise e manipulação de dados
+numpy>=1.20.0
+pandas>=1.3.0
+
+# Biblioteca para manipulação de grafos (usada na poda de árvore)
+networkx>=2.5
+
+# Biblioteca para construção e manipulação de árvores
+anytree>=2.8.0
+
+# Ferramentas de desenvolvimento e qualidade de código
+pytest>=6.2.5
+black>=21.5b2
+pylint>=2.8.2
