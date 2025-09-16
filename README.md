@@ -1,166 +1,166 @@
-# PaCA: Projeto de Análise de Computação Aproximada
+# PaCA: Project for Approximate Computing Analysis
 
-Framework completo para geração, simulação, análise e rastreamento de variantes de código aproximado, com suporte a aplicações científicas, integração com toolchain RISC-V, profiler Prof5, análise de erros e execução paralela.
-
----
-
-## Sumário
-
-- [Visão Geral](#visão-geral)
-- [Funcionalidades](#funcionalidades)
-- [Fluxo Completo do Projeto](#fluxo-completo-do-projeto)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [Instalação e Configuração do Ambiente](#instalação-e-configuração-do-ambiente)
-- [Como Usar](#como-usar)
-  - [Execução de Aplicações](#execução-de-aplicações)
-  - [Geração de Variantes](#geração-de-variantes)
-  - [Adição de Novas Aplicações](#adição-de-novas-aplicações)
-  - [Análise de Resultados](#análise-de-resultados)
-  - [Rastreamento de Variantes](#rastreamento-de-variantes)
-- [Arquivos de Controle](#arquivos-de-controle)
-- [Licença](#licença)
+A complete framework for the generation, simulation, analysis, and tracking of approximate code variants, with support for scientific applications, integration with the RISC-V toolchain, Prof5 profiler, error analysis, and parallel execution.
 
 ---
 
-## Visão Geral
+## Table of Contents
 
-O PaCA automatiza a geração de variantes aproximadas de código, compila, simula, analisa desempenho e precisão, e rastreia variantes em experimentos de computação aproximada, especialmente para arquitetura RISC-V.
-
----
-
-## Funcionalidades
-
-- Geração automática de variantes de código com operadores aproximados.
-- Compilação cruzada para RISC-V.
-- Simulação automatizada via Spike.
-- Análise de desempenho com Prof5.
-- Análise de erro entre variantes e referência.
-- Rastreamento de variantes executadas, falhas e checkpoints.
-- Poda de variantes redundantes.
-- Suporte a múltiplas aplicações científicas.
-- Execução paralela (multi-thread).
-- Logs detalhados e organização de resultados.
+- [Overview](#overview)
+- [Features](#features)
+- [Complete Project Workflow](#complete-project-workflow)
+- [Project Structure](#project-structure)
+- [Environment Installation and Configuration](#environment-installation-and-configuration)
+- [How to Use](#how-to-use)
+  - [Running Applications](#running-applications)
+  - [Generating Variants](#generating-variants)
+  - [Adding New Applications](#adding-new-applications)
+  - [Analyzing Results](#analyzing-results)
+  - [Tracking Variants](#tracking-variants)
+- [Control Files](#control-files)
+- [License](#license)
 
 ---
 
-## Fluxo Completo do Projeto
+## Overview
 
-1. **Preparação do ambiente**: Instalação do ambiente Docker já configurado.
-2. **Geração de variantes**: Criação automática de múltiplas versões do código base com operadores aproximados.
-3. **Compilação**: Cada variante é compilada para a arquitetura RISC-V.
-4. **Simulação**: As variantes são executadas no simulador Spike.
-5. **Análise de desempenho**: O Prof5 coleta métricas detalhadas de execução.
-6. **Análise de erro**: As saídas das variantes são comparadas com a referência para medir precisão.
-7. **Rastreamento e controle**: O sistema registra variantes executadas, falhas e checkpoints para retomada.
-8. **Poda de variantes**: Variantes redundantes são eliminadas para otimizar o processo.
-9. **Armazenamento e logs**: Todos os resultados, logs e artefatos são organizados em diretórios específicos.
+PaCA automates the generation of approximate code variants, compiles, simulates, analyzes performance and accuracy, and tracks variants in approximate computing experiments, especially for the RISC-V architecture.
 
 ---
 
-## Estrutura do Projeto
+## Features
+
+- Automatic generation of code variants with approximate operators.
+- Cross-compilation for RISC-V.
+- Automated simulation via Spike.
+- Performance analysis with Prof5.
+- Error analysis between variants and the reference.
+- Tracking of executed variants, failures, and checkpoints.
+- Pruning of redundant variants.
+- Support for multiple scientific applications.
+- Parallel execution (multi-threaded).
+- Detailed logs and organization of results.
+
+---
+
+## Complete Project Workflow
+
+1.  **Environment preparation**: Installation of the pre-configured Docker environment.
+2.  **Variant generation**: Automatic creation of multiple versions of the base code with approximate operators.
+3.  **Compilation**: Each variant is compiled for the RISC-V architecture.
+4.  **Simulation**: The variants are executed in the Spike simulator.
+5.  **Performance analysis**: Prof5 collects detailed execution metrics.
+6.  **Error analysis**: The outputs of the variants are compared with the reference to measure accuracy.
+7.  **Tracking and control**: The system records executed variants, failures, and checkpoints for resumption.
+8.  **Variant pruning**: Redundant variants are eliminated to optimize the process.
+9.  **Storage and logs**: All results, logs, and artifacts are organized into specific directories.
+
+---
+
+## Project Structure
 
 ```
 PaCA/
 ├── src/
-│   ├── apps/           # Aplicações suportadas (fft, kmeans, etc)
-│   ├── database/       # Rastreamento de variantes
-│   ├── execution/      # Compilação e simulação
-│   ├── utils/          # Utilitários (análise de erro, poda, logging)
+│   ├── apps/             # Supported applications (fft, kmeans, etc)
+│   ├── database/         # Variant tracking
+│   ├── execution/        # Compilation and simulation
+│   ├── utils/            # Utilities (error analysis, pruning, logging)
 │   ├── code_parser.py
 │   ├── config.py
 │   ├── generator.py
-│   ├── gera_variantes.py
+│   ├── generate_variants.py
 │   ├── run.py
 │   └── transformations.py
 ├── data/
-│   └── reference/      # Funções aproximadas (approx.h)
+│   └── reference/        # Approximate functions (approx.h)
 ├── storage/
-│   ├── dump/           # Dumps de código objeto
-│   ├── executable/     # Executáveis compilados
-│   ├── logs/           # Logs de execução
-│   ├── output/         # Saídas das simulações
-│   └── prof5_results/  # Resultados do profiler
-└── codigos_modificados/ # Variantes de código geradas
+│   ├── dump/             # Object code dumps
+│   ├── executable/       # Compiled executables
+│   ├── logs/             # Execution logs
+│   ├── output/           # Simulation outputs
+│   └── prof5_results/    # Profiler results
+└── modified_codes/       # Generated code variants
 ```
 
 ---
 
-## Instalação e Configuração do Ambiente
+## Environment Installation and Configuration
 
-**Recomendado: use o container Docker já pronto!**
+**Recommended: use the pre-built Docker container!**
 
-1. **Baixe e execute o container Docker:**
+1. **Download and run the Docker container:**
    ```sh
    docker pull gregoriokn/lscad_approx:v2
    docker run -it --rm -v $(pwd):/workspace -w /workspace gregoriokn/lscad_approx:v2 /bin/bash
    ```
-   > O container já possui o toolchain RISC-V, Spike e dependências Python instaladas.
+   > The container already includes the RISC-V toolchain, Spike, and Python dependencies.
 
-2. **(Opcional) Instale dependências Python adicionais:**
+2. **(Optional) Install additional Python dependencies:**
    ```sh
    pip install -r requirements.txt
    ```
 
-3. **Configure caminhos** em `src/config_base.py` e `src/config.py` conforme seu ambiente/diretórios.
+3. **Configure paths** in `src/config_base.py` and `src/config.py` according to your environment/directories.
 
 ---
 
-## Como Usar
+## How to Use
 
-### Execução de Aplicações
+### Running Applications
 
-Execute uma aplicação suportada (ex: fft, kmeans):
-
-```sh
-python src/run.py --app [nome_da_aplicacao] --workers [num_threads]
-```
-- `--app`: Nome da aplicação (ex: fft, kmeans)
-- `--workers`: Número de threads para paralelização (opcional)
-
-### Geração de Variantes
-
-Gere variantes de código a partir de um arquivo fonte:
+Run a supported application (e.g., fft, kmeans):
 
 ```sh
-python src/gera_variantes.py --input [arquivo_entrada] --output [pasta_saida]
+python src/run.py --app [application_name] --workers [num_threads]
 ```
-- `--input`: Caminho do arquivo fonte base
-- `--output`: Pasta onde as variantes serão salvas
+- `--app`: Application name (e.g., fft, kmeans)
+- `--workers`: Number of threads for parallelization (optional)
 
-### Adição de Novas Aplicações
+### Generating Variants
 
-1. Crie um novo módulo em `src/apps/` (ex: `minha_app.py`)
-2. Implemente as funções:
+Generate code variants from a source file:
+
+```sh
+python src/generate_variants.py --input [input_file] --output [output_folder]
+```
+- `--input`: Path to the base source file
+- `--output`: Folder where the variants will be saved
+
+### Adding New Applications
+
+1. Create a new module in `src/apps/` (e.g., `my_app.py`)
+2. Implement the functions:
    - `prepare_environment(base_config)`
    - `generate_variants(base_config)`
    - `find_variants_to_simulate(base_config)`
    - `simulate_variant(variant_file, variant_hash, base_config, status_monitor)`
-3. Adicione ao dicionário `AVAILABLE_APPS` em `src/run.py`
+3. Add it to the `AVAILABLE_APPS` dictionary in `src/run.py`
 
-### Análise de Resultados
+### Analyzing Results
 
-- Resultados das simulações: `storage/output/`
-- Resultados do profiler: `storage/prof5_results/`
-- Logs de execução: `storage/logs/`
-- Análise de erro: utilize `src/utils/error_analyzer.py`
+- Simulation results: `storage/output/`
+- Profiler results: `storage/prof5_results/`
+- Execution logs: `storage/logs/`
+- Error analysis: use `src/utils/error_analyzer.py`
 
-### Rastreamento de Variantes
+### Tracking Variants
 
-- Controle de variantes executadas: `executados.txt`
-- Registro de falhas: `falhas.txt`
-- Checkpoint para retomada: `checkpoint.txt`
-- Rastreamento detalhado: `src/database/variant_tracker.py`
-
----
-
-## Arquivos de Controle
-
-- `executados.txt`: Variantes já simuladas
-- `falhas.txt`: Variantes que falharam
-- `checkpoint.txt`: Estado para retomada automática
+- Executed variants log: `executed.txt`
+- Failure log: `failures.txt`
+- Checkpoint for resumption: `checkpoint.txt`
+- Detailed tracking: `src/database/variant_tracker.py`
 
 ---
 
-## Licença
+## Control Files
 
-Projeto acadêmico. Todos os direitos reservados.
+- `executed.txt`: Variants already simulated
+- `failures.txt`: Variants that failed
+- `checkpoint.txt`: State for automatic resumption
+
+---
+
+## License
+
+Academic project. All rights reserved.
