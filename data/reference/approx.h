@@ -1,73 +1,36 @@
 #ifndef APPROX_H
 #define APPROX_H
 
-// Desativa o acesso ao ambiente de ponto flutuante para otimização de desempenho
 #pragma STDC FENV_ACCESS OFF
 
-// Função de subtração aproximada para float
-inline float FSUBX(float i, float s) {
-    float result;
-    asm volatile (
-        "fsubx.s %[z], %[x], %[y]\n\t"
-        : [z] "=f" (result)
-        : [x] "f" (i), [y] "f" (s)
-    );
-    return result;
+static inline __attribute__((always_inline)) float FADDX(float a, float b) {
+    float res;
+    asm volatile ("faddx.s %0, %1, %2" : "=f"(res) : "f"(a), "f"(b));
+    return res;
 }
 
-// Função de divisão aproximada para float
-inline float FDIVX(float i, float s) {
-    float result;
-    asm volatile (
-        "fdivx.s %[z], %[x], %[y]\n\t"
-        : [z] "=f" (result)
-        : [x] "f" (i), [y] "f" (s)
-    );
-    return result;
+static inline __attribute__((always_inline)) float FSUBX(float a, float b) {
+    float res;
+    asm volatile ("fsubx.s %0, %1, %2" : "=f"(res) : "f"(a), "f"(b));
+    return res;
 }
 
-// Função de adição aproximada para float
-inline float FADDX(float i, float s) {
-    float result;
-    asm volatile (
-        "faddx.s %[z], %[x], %[y]\n\t"
-        : [z] "=f" (result)
-        : [x] "f" (i), [y] "f" (s)
-    );
-    return result;
+static inline __attribute__((always_inline)) float FMULX(float a, float b) {
+    float res;
+    asm volatile ("fmulx.s %0, %1, %2" : "=f"(res) : "f"(a), "f"(b));
+    return res;
 }
 
-// Função de multiplicação aproximada para float
-inline float FMULX(float i, float s) {
-    float result;
-    asm volatile (
-        "fmulx.s %[z], %[x], %[y]\n\t"
-        : [z] "=f" (result)
-        : [x] "f" (i), [y] "f" (s)
-    );
-    return result;
+static inline __attribute__((always_inline)) int ADDX(int a, int b) {
+    int res;
+    asm volatile ("addx %0, %1, %2" : "=r"(res) : "r"(a), "r"(b));
+    return res;
 }
 
-// Função de adição aproximada para inteiros
-inline int ADDX(int i, int s) {
-    int result;
-    asm volatile (
-        "addx %[z], %[x], %[y]\n\t"
-        : [z] "=r" (result)
-        : [x] "r" (i), [y] "r" (s)
-    );
-    return result;
-}
-
-// Função de multiplicação aproximada para inteiros
-inline int MULX(int i, int s) {
-    int result;
-    asm volatile (
-        "mulx %[z], %[x], %[y]\n\t"
-        : [z] "=r" (result)
-        : [x] "r" (i), [y] "r" (s)
-    );
-    return result;
+static inline __attribute__((always_inline)) int MULX(int a, int b) {
+    int res;
+    asm volatile ("mulx %0, %1, %2" : "=r"(res) : "r"(a), "r"(b));
+    return res;
 }
 
 #endif // APPROX_H
