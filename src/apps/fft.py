@@ -16,8 +16,8 @@ from utils.prof5fake import contar_instrucoes_log, avaliar_modelo_energia
 # Configurações específicas para a aplicação FFT
 FFT_CONFIG = {
     # Arquivos específicos da aplicação
-    "original_file": "axbench/applications/fft/src/fourier.cpp",
-    "fft_object": "axbench/applications/fft/fft.o",
+    "original_file": "data/applications/fft/src/fourier.cpp",
+    "fft_object": "data/applications/fft/fft.o",
     "train_data_input": "512",  # Modifique para o valor 512 em vez de um arquivo
     
     # Padrões de arquivos
@@ -28,14 +28,14 @@ FFT_CONFIG = {
     "prof5_suffix": ".prof5",
     
     # Parâmetros de geração de variantes
-    "input_file_for_variants": "axbench/applications/fft/src/fourier.cpp",
+    "input_file_for_variants": "data/applications/fft/src/fourier.cpp",
     "operations_map": {'*': 'FMULX', '+': 'FADDX', '-': 'FSUBX'},
     
     # Parâmetros específicos de compilação do FFT
-    "include_dir": "axbench/applications/fft/src",
+    "include_dir": "data/applications/fft/src",
     "additional_sources": [
-        "axbench/applications/fft/src/fft.cpp",
-        "axbench/applications/fft/src/complex.cpp"
+        "data/applications/fft/src/fft.cpp",
+        "data/applications/fft/src/complex.cpp"
     ],
     "optimization_level": "-O"
 }

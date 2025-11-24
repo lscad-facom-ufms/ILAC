@@ -196,16 +196,15 @@ def main():
     if len(sys.argv) < 2:
         print("Uso: python3 prof5fake.py <arquivo.log> [--modelo modelo.json] [--template]")
         print("Exemplos:")
-        print("  python3 prof5fake.py aquivo_log.log")
-        print("  python3 prof5fake.py aquivo_log.log --template")
-        print("  python3 prof5fake.py aquivo_log.log --modelo meu_modelo.json")
+        print("  python3 prof5fake.py execution_Exato_blackscholes.log")
+        print("  python3 prof5fake.py execution_Exato_blackscholes.log --template")
+        print("  python3 prof5fake.py execution_Exato_blackscholes.log --modelo meu_modelo.json")
         sys.exit(1)
-    
-    arquivo_log = sys.argv[1]
+
+    arquivo_entrada = sys.argv[1]
     gerar_template = "--template" in sys.argv
     modelo_path = None
-    
-    # Verificar se foi fornecido modelo
+
     if "--modelo" in sys.argv:
         try:
             idx = sys.argv.index("--modelo")
@@ -214,18 +213,24 @@ def main():
         except:
             print("Erro: Especifique o caminho do modelo após --modelo")
             sys.exit(1)
-    
+
     try:
-        # Etapa 1: Contar instruções
-        resultado = contar_instrucoes_log(arquivo_log)
-        
+        # Agora lê o .log como JSON direto
+        if arquivo_entrada.endswith('.log'):
+            with open(arquivo_entrada, 'r') as f:
+                resultado = json.load(f)
+            print(f"Arquivo .log (JSON) de instruções carregado: {arquivo_entrada}")
+        else:
+            print("Erro: O arquivo de entrada deve ser um .log no formato JSON.")
+            sys.exit(1)
+
         if not resultado:
             print("Nenhuma instrução encontrada no formato esperado.")
             return
-        
+
         # Etapa 2: Gerar template se solicitado
         if gerar_template:
-            template_name = arquivo_log.replace('.log', '_template.json')
+            template_name = arquivo_entrada.replace('.log', '_template.json')
             gerar_modelo_template(resultado, template_name)
         
         # Etapa 3: Avaliar modelo se fornecido
@@ -238,7 +243,7 @@ def main():
             
             if resultados_energia:
                 # Salvar resultados
-                resultado_nome = arquivo_log.replace('.log', '_resultados.json')
+                resultado_nome = arquivo_entrada.replace('.log', '_resultados.json')
                 with open(resultado_nome, 'w') as json_file:
                     json.dump(resultados_energia, json_file, indent=2, sort_keys=True)
                 
@@ -269,7 +274,7 @@ def main():
             print(f"{i:2d}. {instrucao:15} {count:>10,} ({percentage:5.2f}%)")
         
     except FileNotFoundError:
-        print(f"Erro: Arquivo '{arquivo_log}' não encontrado.")
+        print(f"Erro: Arquivo '{arquivo_entrada}' não encontrado.")
         sys.exit(1)
     except Exception as e:
         print(f"Erro inesperado: {e}")

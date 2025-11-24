@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import warnings
+import math
 
 def safe_correlation(x, y):
     """
@@ -17,57 +18,76 @@ def safe_correlation(x, y):
             logging.warning(f"Não foi possível calcular a correlação: {e}")
             return np.nan
 
-def calculate_metrics(exact_data, approx_data, error_threshold=1e-5):
+def _ensure_sequence(data):
+    """Garante que `data` seja uma sequência indexável/lista.
+    - Se for None -> lista vazia
+    - Se tiver __len__ -> retorna como está
+    - Se for iterável (gerador, map, etc.) -> converte para list
+    - Caso contrário (valor escalar) -> embrulha em lista
+    """
+    if data is None:
+        return []
+    # Strings são sequências, mas geralmente não são esperadas aqui;
+    # mantemos comportamento padrão (len válido) para não alterar demais.
+    try:
+        _ = len(data)
+        return data
+    except TypeError:
+        # Não tem len: tentar iterar e transformar em lista
+        try:
+            return list(data)
+        except Exception:
+            # Não iterável: tratar como escalar
+            return [data]
+
+def calculate_metrics(exact_data, approx_data):
     """
     Calcula várias métricas de precisão entre os dados exatos e aproximados, lidando com NaN.
     """
-    if len(exact_data) != len(approx_data):
-        msg = f'Tamanhos diferentes: exato={len(exact_data)}, aprox={len(approx_data)}'
-        logging.warning(msg)
-        return {'ERROR': msg}
+    exact_seq = _ensure_sequence(exact_data)
+    approx_seq = _ensure_sequence(approx_data)
 
-    valid_mask = ~(np.isnan(exact_data) | np.isnan(approx_data))
-    if not np.any(valid_mask):
-        msg = 'Nenhum dado válido para comparação'
-        logging.warning(msg)
-        return {'ERROR': msg}
+    if len(exact_seq) != len(approx_seq):
+        raise ValueError(f"Tamanhos incompatíveis: exact={len(exact_seq)}, approx={len(approx_seq)}")
 
-    exact_valid = exact_data[valid_mask]
-    approx_valid = approx_data[valid_mask]
+    n = len(exact_seq)
+    if n == 0:
+        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0}
 
-    absolute_error = np.abs(exact_valid - approx_valid)
-    miss_mask = absolute_error > error_threshold
-    miss_rate = np.mean(miss_mask)
+    mse_acc = 0.0
+    mae_acc = 0.0
+    max_err = 0.0
 
-    relative_error = np.zeros_like(absolute_error)
-    non_zero_mask = exact_valid != 0
-    if np.any(non_zero_mask):
-        relative_error[non_zero_mask] = absolute_error[non_zero_mask] / np.abs(exact_valid[non_zero_mask])
+    for i, (e, a) in enumerate(zip(exact_seq, approx_seq)):
+        try:
+            ev = float(e)
+            av = float(a)
+        except Exception as exc:
+            raise ValueError(f"Valor não numérico na posição {i}: exact={e!r}, approx={a!r}") from exc
 
-    exact_range = np.max(exact_valid) - np.min(exact_valid) if np.any(valid_mask) else 0
-    nrmse = np.sqrt(np.mean(absolute_error**2)) / exact_range if exact_range > 0 else np.nan
+        err = ev - av
+        abs_err = abs(err)
+        mse_acc += err * err
+        mae_acc += abs_err
+        if abs_err > max_err:
+            max_err = abs_err
+
+    mse = mse_acc / n
+    mae = mae_acc / n
 
     return {
-        'MAE': float(np.mean(absolute_error)),
-        'MSE': float(np.mean(absolute_error**2)),
-        'RMSE': float(np.sqrt(np.mean(absolute_error**2))),
-        'MRE': float(np.mean(relative_error[non_zero_mask])) if np.any(non_zero_mask) else 0.0,
-        'MAX_ERROR': float(np.max(absolute_error)),
-        'NRMSE': float(nrmse) if not np.isnan(nrmse) else None,
-        'CORRELATION': float(safe_correlation(exact_valid, approx_valid)),
-        'ACCURACY': float(1.0 - np.mean(miss_mask)),
-        'MISS_RATE': float(miss_rate),
-        'VALID_POINTS': int(np.sum(valid_mask)),
-        'TOTAL_POINTS': len(exact_data)
+        "count": n,
+        "mse": mse,
+        "mae": mae,
+        "max_error": max_err
     }
 
 def calculate_error(reference_output_path, variant_output_path):
     """
     Calcula a acurácia entre a saída de referência e a saída da variante.
 
-    Lê os dados dos arquivos de saída, converte para arrays numpy e calcula a acurácia.
-
-    Retorna a acurácia (um float entre 0 e 1) ou None se o cálculo falhar.
+    Lê os dados dos arquivos de saída, converte para arrays numpy e calcula métricas de erro.
+    Retorna um valor de accuracy (float) no intervalo [0.0, 1.0]. Também registra as métricas calculadas.
     """
     try:
         ref_data = np.loadtxt(reference_output_path)
@@ -75,16 +95,35 @@ def calculate_error(reference_output_path, variant_output_path):
 
         metrics = calculate_metrics(ref_data, var_data)
 
-        if 'ERROR' in metrics:
-            logging.warning(f"Não foi possível calcular a acurácia para {variant_output_path}: {metrics['ERROR']}")
-            return None
-        
-        accuracy = metrics.get('ACCURACY')
-        if accuracy is not None:
-            logging.info(f"Acurácia calculada para {variant_output_path}: {accuracy:.4f}")
-        
+        # RMSE
+        rmse = math.sqrt(metrics.get("mse", 0.0))
+
+        # escala usada para normalização: máximo absoluto do dado de referência
+        try:
+            scale = float(np.nanmax(np.abs(ref_data)))
+        except Exception:
+            scale = 0.0
+
+        if metrics.get("count", 0) == 0:
+            accuracy = 1.0
+        else:
+            if scale == 0.0:
+                accuracy = 1.0 if rmse == 0.0 else 0.0
+            else:
+                accuracy = 1.0 - (rmse / scale)
+                # clamp
+                accuracy = max(0.0, min(1.0, accuracy))
+
+        logging.info(f"Métricas calculadas para {variant_output_path}: {metrics}")
+        logging.debug(f"Accuracy calculada para {variant_output_path}: {accuracy}")
         return accuracy
 
-    except (FileNotFoundError, ValueError) as e:
-        logging.error(f"Não foi possível calcular o erro para {variant_output_path}: {e}")
-        return None
+    except FileNotFoundError as e:
+        logging.error(f"Arquivo não encontrado ao calcular o erro para {variant_output_path}: {e}")
+        return 0.0
+    except ValueError as e:
+        logging.error(f"Formato inválido ao calcular o erro para {variant_output_path}: {e}")
+        return 0.0
+    except Exception as e:
+        logging.exception(f"Erro inesperado ao calcular o erro para {variant_output_path}: {e}")
+        return 0.0

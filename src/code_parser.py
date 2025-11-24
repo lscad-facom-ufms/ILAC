@@ -36,28 +36,3 @@ def parse_code(file_path):
         physical_to_logical[i] = logical_line_count
     
     return lines, modifiable_lines, physical_to_logical
-
-def encontrar_blocos_approx(codigo):
-    """
-    Encontra blocos de código marcados com #pragma approx.
-    Retorna lista de tuplas (inicio, fim, bloco).
-    """
-    # Regex para encontrar blocos entre #pragma approx e #pragma endapprox
-    padrao = re.compile(
-        r'#pragma\s+approx\s*\n(.*?)#pragma\s+endapprox',
-        re.DOTALL | re.IGNORECASE
-    )
-    blocos = []
-    for match in padrao.finditer(codigo):
-        inicio = match.start(1)
-        fim = match.end(1)
-        bloco = match.group(1)
-        blocos.append((inicio, fim, bloco))
-    return blocos
-
-# Exemplo de uso:
-# with open('meuarquivo.cpp') as f:
-#     codigo = f.read()
-# blocos = encontrar_blocos_approx(codigo)
-# for inicio, fim, bloco in blocos:
-#     print("Bloco approx encontrado:", bloco)

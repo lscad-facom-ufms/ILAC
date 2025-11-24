@@ -12,14 +12,10 @@ def ensure_dirs(*dirs):
         logging.info(f"Diretório '{d}' verificado/criado")
 
 def copy_file(src, dest_dir):
-    """Copia um arquivo para o diretório especificado"""
-    if os.path.exists(src):
-        shutil.copy(src, dest_dir)
-        logging.info(f"Arquivo '{src}' copiado para '{dest_dir}'")
-        return True
-    else:
-        logging.error(f"Arquivo '{src}' não encontrado!")
-        return False
+    # Garante que o diretório de destino existe
+    os.makedirs(dest_dir, exist_ok=True)
+    shutil.copy(src, dest_dir)
+    return os.path.join(dest_dir, os.path.basename(src))
 
 def get_modified_lines_physical(orig_lines, mod_lines):
     """Identifica as linhas fisicamente modificadas entre dois arquivos"""

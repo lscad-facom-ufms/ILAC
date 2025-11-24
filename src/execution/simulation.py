@@ -22,7 +22,7 @@ def run_spike_simulation(exe_file, input_file, output_file, spike_log_file, vari
     sim_cmd = [
         "spike",
         "--isa=RV32IMAFDC",
-        "-l",
+        "-c",
         f"--log={spike_log_file}",
         "/opt/riscv/riscv32-unknown-elf/bin/pk",
         exe_file,
