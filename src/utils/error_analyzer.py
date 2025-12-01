@@ -1,129 +1,204 @@
-import logging
-import numpy as np
 import warnings
 import math
+import json
+import logging
+from pathlib import Path
+from typing import Iterable, List, Any
 
 def safe_correlation(x, y):
     """
-    Calcula a correlação de Pearson com tratamento robusto para casos especiais.
+    Calcula correlação de Pearson (fallback simples) com tratamento de erros.
+    Retorna None se não for possível calcular.
     """
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
+        warnings.simplefilter("ignore")
         try:
-            if np.nanstd(x) == 0 or np.nanstd(y) == 0:
-                return np.nan
-            corr = np.corrcoef(x, y, rowvar=False)
-            return corr[0, 1] if not np.isnan(corr[0, 1]) else np.nan
-        except Exception as e:
-            logging.warning(f"Não foi possível calcular a correlação: {e}")
-            return np.nan
+            x_seq = _ensure_sequence(x)
+            y_seq = _ensure_sequence(y)
+            n = min(len(x_seq), len(y_seq))
+            if n == 0:
+                return None
+            x_vals = [float(v) for v in x_seq[:n]]
+            y_vals = [float(v) for v in y_seq[:n]]
+            mean_x = sum(x_vals) / n
+            mean_y = sum(y_vals) / n
+            num = sum((a - mean_x) * (b - mean_y) for a, b in zip(x_vals, y_vals))
+            den_x = math.sqrt(sum((a - mean_x) ** 2 for a in x_vals))
+            den_y = math.sqrt(sum((b - mean_y) ** 2 for b in y_vals))
+            denom = den_x * den_y
+            if denom == 0:
+                return None
+            return num / denom
+        except Exception:
+            logging.exception("safe_correlation falhou")
+            return None
 
-def _ensure_sequence(data):
-    """Garante que `data` seja uma sequência indexável/lista.
-    - Se for None -> lista vazia
-    - Se tiver __len__ -> retorna como está
-    - Se for iterável (gerador, map, etc.) -> converte para list
-    - Caso contrário (valor escalar) -> embrulha em lista
-    """
+def _ensure_sequence(data: Any) -> List[Any]:
+    """Garante que `data` seja uma lista de elementos indexáveis."""
     if data is None:
         return []
-    # Strings são sequências, mas geralmente não são esperadas aqui;
-    # mantemos comportamento padrão (len válido) para não alterar demais.
+    if isinstance(data, (list, tuple)):
+        return list(data)
+    # strings: mantemos como única linha (não quebrar em chars)
+    if isinstance(data, str):
+        return [data]
     try:
-        _ = len(data)
-        return data
-    except TypeError:
-        # Não tem len: tentar iterar e transformar em lista
-        try:
+        # detecta objeto com __len__
+        if hasattr(data, '__len__'):
             return list(data)
-        except Exception:
-            # Não iterável: tratar como escalar
-            return [data]
+    except Exception:
+        pass
+    # iteráveis (geradores, map, etc.)
+    try:
+        return list(data)
+    except Exception:
+        # valor escalar
+        return [data]
 
-def calculate_metrics(exact_data, approx_data):
+def calculate_metrics(exact_data: Iterable[float], approx_data: Iterable[float]) -> dict:
     """
-    Calcula várias métricas de precisão entre os dados exatos e aproximados, lidando com NaN.
+    Calcula métricas element-wise entre exact_data e approx_data.
+    Retorna dict com: count, mse, mae, max_error, mare (mean abs relative error), accuracy.
     """
     exact_seq = _ensure_sequence(exact_data)
     approx_seq = _ensure_sequence(approx_data)
-
-    if len(exact_seq) != len(approx_seq):
-        raise ValueError(f"Tamanhos incompatíveis: exact={len(exact_seq)}, approx={len(approx_seq)}")
-
-    n = len(exact_seq)
+    n = min(len(exact_seq), len(approx_seq))
     if n == 0:
-        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0}
+        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0, "mare": None, "accuracy": 0.0}
 
-    mse_acc = 0.0
-    mae_acc = 0.0
+    sum_sq = 0.0
+    sum_abs = 0.0
+    sum_rel = 0.0
     max_err = 0.0
+    eps = 1e-12
 
-    for i, (e, a) in enumerate(zip(exact_seq, approx_seq)):
+    for a_raw, b_raw in zip(exact_seq[:n], approx_seq[:n]):
         try:
-            ev = float(e)
-            av = float(a)
-        except Exception as exc:
-            raise ValueError(f"Valor não numérico na posição {i}: exact={e!r}, approx={a!r}") from exc
+            a = float(a_raw)
+            b = float(b_raw)
+        except Exception:
+            # se não for convertível, pula o par
+            n -= 1
+            continue
+        diff = b - a
+        absdiff = abs(diff)
+        sum_sq += diff * diff
+        sum_abs += absdiff
+        denom = abs(a) + eps
+        sum_rel += absdiff / denom
+        if absdiff > max_err:
+            max_err = absdiff
 
-        err = ev - av
-        abs_err = abs(err)
-        mse_acc += err * err
-        mae_acc += abs_err
-        if abs_err > max_err:
-            max_err = abs_err
+    if n <= 0:
+        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0, "mare": None, "accuracy": 0.0}
 
-    mse = mse_acc / n
-    mae = mae_acc / n
+    mse = sum_sq / n
+    mae = sum_abs / n
+    mare = sum_rel / n  # mean absolute relative error
+    # definição simples de acurácia: 1 - MARE, truncado a [0,1]
+    accuracy = max(0.0, 1.0 - mare)
 
     return {
         "count": n,
         "mse": mse,
         "mae": mae,
-        "max_error": max_err
+        "max_error": max_err,
+        "mare": mare,
+        "accuracy": accuracy
     }
 
-def calculate_error(reference_output_path, variant_output_path):
+def calculate_error(output_path: str, reference_path: str) -> dict:
     """
-    Calcula a acurácia entre a saída de referência e a saída da variante.
-
-    Lê os dados dos arquivos de saída, converte para arrays numpy e calcula métricas de erro.
-    Retorna um valor de accuracy (float) no intervalo [0.0, 1.0]. Também registra as métricas calculadas.
+    Lê os arquivos (texto ou JSON) em output_path e reference_path,
+    extrai seqüências numéricas e calcula métricas via calculate_metrics.
+    Salva um arquivo JSON com sufixo .error.json ao lado do output_path e retorna o dict de métricas.
     """
-    try:
-        ref_data = np.loadtxt(reference_output_path)
-        var_data = np.loadtxt(variant_output_path)
+    outp = Path(output_path)
+    refp = Path(reference_path)
+    logging.info(f"[error_analyzer] calculate_error called with output={outp} reference={refp}")
 
-        metrics = calculate_metrics(ref_data, var_data)
+    if not outp.exists():
+        logging.warning(f"[error_analyzer] output file not found: {outp}")
+        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0, "mare": None, "accuracy": 0.0}
+    if not refp.exists():
+        logging.warning(f"[error_analyzer] reference file not found: {refp}")
+        return {"count": 0, "mse": 0.0, "mae": 0.0, "max_error": 0.0, "mare": None, "accuracy": 0.0}
 
-        # RMSE
-        rmse = math.sqrt(metrics.get("mse", 0.0))
-
-        # escala usada para normalização: máximo absoluto do dado de referência
+    def _read_numbers(p: Path) -> List[float]:
         try:
-            scale = float(np.nanmax(np.abs(ref_data)))
+            text = p.read_text(encoding='utf-8')
         except Exception:
-            scale = 0.0
+            try:
+                text = p.read_text(encoding='latin-1')
+            except Exception:
+                logging.exception(f"[error_analyzer] falha ao ler {p}")
+                return []
 
-        if metrics.get("count", 0) == 0:
-            accuracy = 1.0
-        else:
-            if scale == 0.0:
-                accuracy = 1.0 if rmse == 0.0 else 0.0
+        # tenta JSON primeiro
+        try:
+            data = json.loads(text)
+            # aceita lista aninhada, dicionário com valores numéricos, etc.
+            if isinstance(data, list):
+                # achata listas recursivamente e extrai números
+                nums = []
+                def _flatten(obj):
+                    if isinstance(obj, (list, tuple)):
+                        for it in obj:
+                            _flatten(it)
+                    elif isinstance(obj, dict):
+                        for v in obj.values():
+                            _flatten(v)
+                    else:
+                        try:
+                            nums.append(float(obj))
+                        except Exception:
+                            pass
+                _flatten(data)
+                return nums
+            elif isinstance(data, dict):
+                # extrai valores
+                nums = []
+                for v in data.values():
+                    try:
+                        nums.append(float(v))
+                    except Exception:
+                        pass
+                return nums
             else:
-                accuracy = 1.0 - (rmse / scale)
-                # clamp
-                accuracy = max(0.0, min(1.0, accuracy))
+                # valor escalar
+                try:
+                    return [float(data)]
+                except Exception:
+                    return []
+        except Exception:
+            pass
 
-        logging.info(f"Métricas calculadas para {variant_output_path}: {metrics}")
-        logging.debug(f"Accuracy calculada para {variant_output_path}: {accuracy}")
-        return accuracy
+        # fallback: extrair números por regex / split
+        parts = []
+        for line in text.splitlines():
+            for token in line.strip().split():
+                try:
+                    parts.append(float(token))
+                except Exception:
+                    # tenta remover vírgulas/ponteiros como "1,234" ou "1.234,"
+                    tok = token.strip().strip(' ,;')
+                    try:
+                        parts.append(float(tok))
+                    except Exception:
+                        continue
+        return parts
 
-    except FileNotFoundError as e:
-        logging.error(f"Arquivo não encontrado ao calcular o erro para {variant_output_path}: {e}")
-        return 0.0
-    except ValueError as e:
-        logging.error(f"Formato inválido ao calcular o erro para {variant_output_path}: {e}")
-        return 0.0
-    except Exception as e:
-        logging.exception(f"Erro inesperado ao calcular o erro para {variant_output_path}: {e}")
-        return 0.0
+    ref_nums = _read_numbers(refp)
+    out_nums = _read_numbers(outp)
+
+    metrics = calculate_metrics(ref_nums, out_nums)
+
+    # salva métricas ao lado do arquivo de output para auditoria
+    try:
+        metrics_path = outp.with_suffix(outp.suffix + ".error.json")
+        metrics_path.write_text(json.dumps(metrics, indent=2), encoding='utf-8')
+        logging.info(f"[error_analyzer] metrics saved to {metrics_path}")
+    except Exception:
+        logging.exception("[error_analyzer] falha ao salvar metrics")
+
+    return metrics

@@ -53,6 +53,7 @@ def save_modified_lines_for_bruteforce(variant_file, original_file, variant_hash
 
 # Dicionário de aplicações disponíveis
 AVAILABLE_APPS = {
+    "blackscholes": "apps.blackscholes",
     "kinematics": "apps.kinematics",
     "fft": "apps.fft",
     "jmeint": "apps.jmeint",
@@ -200,20 +201,42 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
         prune_branch(node)
         return node
 
-    # 3. Analisa a acurácia para determinar o erro
-    accuracy = calculate_error(reference_output_path, variant_output_path)
+    # 3. Análise de Erro (Prioriza métrica customizada da aplicação)
+    error = None
+    
+    # VERIFICAÇÃO CUSTOMIZADA (Ex: Miss Rate para JMEINT)
+    if hasattr(app_module, 'calculate_custom_error'):
+        error = app_module.calculate_custom_error(reference_output_path, variant_output_path)
+    
+    # VERIFICAÇÃO GENÉRICA (Se não houver customizada)
+    else:
+        accuracy_data = calculate_error(reference_output_path, variant_output_path)
+        if accuracy_data is not None:
+            try:
+                if isinstance(accuracy_data, dict):
+                    if 'accuracy' in accuracy_data:
+                        accuracy_val = float(accuracy_data['accuracy'])
+                    else:
+                        accuracy_val = float(list(accuracy_data.values())[0])
+                else:
+                    accuracy_val = float(accuracy_data)
+                
+                # Converte Acurácia para Erro
+                error = 1.0 - accuracy_val
+            except Exception as e:
+                logging.error(f"Erro ao converter acurácia para erro: {e}")
+                error = None
 
-    # Se o cálculo da acurácia falhar, o nó falha
-    if accuracy is None:
+    # Se o cálculo de erro falhou (seja customizado ou genérico)
+    if error is None:
         node.status = 'FAILED'
-        add_failed_variant(variant_hash, "accuracy_calculation_failure", config['base_config']["failed_variants_file"], lock=db_lock)
+        add_failed_variant(variant_hash, "error_calculation_failure", config['base_config']["failed_variants_file"], lock=db_lock)
         if hasattr(app_module, 'cleanup_variant_files'):
             cleanup_config = {**config['base_config'], **config['pruning_config']['app_specific_config']}
             app_module.cleanup_variant_files(variant_hash, cleanup_config)
         prune_branch(node)
         return node
 
-    error = 1.0 - accuracy
     node.error = error
 
     # SALVAR AS LINHAS MODIFICADAS (ÍNDICES) PARA TODAS AS VARIANTES
@@ -224,13 +247,13 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
     if error > threshold:
         node.status = 'PRUNED'
         prune_branch(node)
-        logging.info(f"Nó {node.name} podado devido a erro alto ({error:.4f} > {threshold})")
+        logging.info(f"Nó {node.name} podado. Erro: {error:.4f} > Threshold: {threshold}")
         if hasattr(app_module, 'cleanup_variant_files'):
             cleanup_config = {**config['base_config'], **config['pruning_config']['app_specific_config']}
             app_module.cleanup_variant_files(variant_hash, cleanup_config)
     else:
         # 5. Se o erro for aceitável, continua a execução com a etapa de profiling (Etapa 2)
-        logging.info(f"Nó {node.name} passou na verificação de erro. Executando profiling.")
+        logging.info(f"Nó {node.name} aceito. Erro: {error:.4f} <= Threshold: {threshold}. Executando profiling.")
         success = app_module.run_profiling_stage(resume_context, config['base_config'], status_monitor)
         
         if success:
