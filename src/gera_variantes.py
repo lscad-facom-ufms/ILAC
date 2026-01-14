@@ -1,186 +1,202 @@
 import os
 import argparse
+import sys
 from config import CONFIG, update_config
 from code_parser import parse_code
 from generator import generate_variants
 
+def force_print(msg):
+    """Imprime mensagem forçando o flush do buffer para aparecer nos logs do subprocesso."""
+    print(msg, flush=True)
+
 def main(config_override=None):
     # Obter o diretório raiz do projeto (onde está a pasta src)
-    # Isso garante um ponto de referência consistente
-    script_dir = os.path.dirname(os.path.abspath(__file__))  # Diretório atual do script
-    project_root = os.path.dirname(script_dir)  # Diretório pai (raiz do projeto)
+    script_dir = os.path.dirname(os.path.abspath(__file__))  
+    project_root = os.path.dirname(script_dir) 
     
-    # Configurar argumentos da linha de comando apenas se chamado diretamente
+    # Configuração padrão de caminhos
+    base_storage = os.path.join(project_root, "storage")
+    
+    # Argumentos da linha de comando
+    parser = argparse.ArgumentParser(description='Gerador de variantes de código')
+    parser.add_argument('--input', type=str, help='Arquivo de entrada')
+    parser.add_argument('--output', type=str, help='Pasta de saída para as variantes')
+    parser.add_argument('--executados', type=str, help='Arquivo de variantes executadas')
+    
+    # NOVOS ARGUMENTOS ADICIONADOS PARA CONTROLE DE GERAÇÃO
+    parser.add_argument('--strategy', type=str, help='Estratégia de geração (ex: "one_hot", "all", "combinatorial")')
+    parser.add_argument('--max_variantes', type=int, help='Limite máximo de variantes a gerar')
+    
+    # Parseia apenas se não houver override direto (chamada via função)
     if config_override is None:
-        parser = argparse.ArgumentParser(description='Gerador de variantes de código')
-        parser.add_argument('--input', type=str, help='Arquivo de entrada (sobrepõe configuração)')
-        parser.add_argument('--output', type=str, help='Pasta de saída (sobrepõe configuração)')
-        parser.add_argument('--executados', type=str, help='Arquivo de variantes executadas')
-        parser.add_argument('--debug', type=str, help='Arquivo de debug para registrar variantes geradas')
         args = parser.parse_args()
-
-        # Atualiza configuração se necessário
-        if args.input:
-            # Converter para caminho absoluto se necessário
-            input_file = args.input if os.path.isabs(args.input) else os.path.join(project_root, args.input)
-            update_config({"input_file": input_file})
-        if args.output:
-            # Converter para caminho absoluto se necessário
-            output_folder = args.output if os.path.isabs(args.output) else os.path.join(project_root, args.output)
-            update_config({"output_folder": output_folder})
-        if args.executados:
-            # Converter para caminho absoluto se necessário
-            executados_file = args.executados if os.path.isabs(args.executados) else os.path.join(project_root, args.executados)
-            update_config({"executed_variants_file": executados_file})
-        if args.debug:
-            # Converter para caminho absoluto se necessário
-            debug_file = args.debug if os.path.isabs(args.debug) else os.path.join(project_root, args.debug)
-            update_config({"debug_file": debug_file})
     else:
-        # Usa a configuração passada como parâmetro
-        update_config(config_override)
-    
-    # Obtém as configurações atualizadas e assegura que são caminhos absolutos
-    input_file = CONFIG["input_file"]
-    if not os.path.isabs(input_file):
-        input_file = os.path.join(project_root, input_file)
-        update_config({"input_file": input_file})
-    
-    # Define storage sempre relativo à raiz do projeto
-    base_path = os.path.join(project_root, "storage")
-    # COMENTAR ESTAS LINHAS QUE SOBRESCREVEM O --output:
-    # output_folder = os.path.join(base_path, "variantes")
-    # # Atualiza a configuração para manter consistência
-    # update_config({"output_folder": output_folder})
-    
-    # USAR o output_folder da configuração (que vem do --output)
-    output_folder = CONFIG["output_folder"]
-    
-    operation_map = CONFIG["operations_map"]
-    executed_file = CONFIG["executed_variants_file"]
-    if not os.path.isabs(executed_file):
-        executed_file = os.path.join(project_root, executed_file)
-        update_config({"executed_variants_file": executed_file})
+        # Simula args vazios se chamado como módulo para evitar erro de atributo
+        args = argparse.Namespace(input=None, output=None, executados=None, strategy=None, max_variantes=None)
+
+    # Dicionário para atualizar a configuração
+    new_config = {}
+    if config_override:
+        new_config.update(config_override)
+
+    # 1. Processar Arquivo de Entrada
+    if args.input:
+        new_config["input_file"] = os.path.abspath(args.input)
+    elif "input_file" not in new_config:
+        # Fallback para o config original, garantindo caminho absoluto
+        orig_input = CONFIG.get("input_file", "")
+        if orig_input and not os.path.isabs(orig_input):
+            new_config["input_file"] = os.path.abspath(os.path.join(project_root, orig_input))
+        else:
+            new_config["input_file"] = orig_input
+
+    # 2. Processar Estratégia e Limites (CRÍTICO PARA O FIX DO FFT)
+    if args.strategy:
+        new_config["strategy"] = args.strategy
+    if args.max_variantes:
+        new_config["max_variantes"] = args.max_variantes
+
+    # 3. Processar Pasta de Saída (Output)
+    if args.output:
+        output_folder = os.path.abspath(args.output)
+        new_config["output_folder"] = output_folder
         
-    debug_file = os.path.join(base_path, "variantes_debug.txt")
-    update_config({"debug_file": debug_file})
+        # Se output for passado (ex: .../workspace/variants), 
+        # definimos o diretório base do workspace como o pai dele.
+        workspace_dir = os.path.dirname(output_folder)
+        
+        # Define caminhos auxiliares DENTRO do workspace
+        debug_file = os.path.join(workspace_dir, "variantes_debug.txt")
+        linhas_dir = os.path.join(workspace_dir, "linhas_modificadas")
+        # Default de arquivo de variáveis executadas quando estamos em modo workspace
+        default_executed = os.path.join(workspace_dir, "executed_variants.txt")
+        if "executed_variants_file" not in new_config:
+            new_config["executed_variants_file"] = default_executed
+    else:
+        # Comportamento legado (sem workspace)
+        output_folder = os.path.join(base_storage, "variantes")
+        new_config["output_folder"] = output_folder
+        debug_file = os.path.join(base_storage, "variantes_debug.txt")
+        linhas_dir = os.path.join(base_storage, "linhas_modificadas")
 
-    print(f"Raiz do projeto: {project_root}")
-    print(f"Diretório de trabalho atual: {os.getcwd()}")
-    print(f"Processando arquivo: {input_file}")
-    print(f"Pasta de saída: {output_folder}")
-    print(f"Arquivo de controle: {executed_file}")
-    print(f"Arquivo de debug: {debug_file}")
+    new_config["debug_file"] = debug_file
+
+    # 4. Processar Arquivo de Executados
+    if args.executados:
+        new_config["executed_variants_file"] = os.path.abspath(args.executados)
+    elif "executed_variants_file" in CONFIG:
+        orig_exec = CONFIG["executed_variants_file"]
+        if orig_exec and not os.path.isabs(orig_exec):
+             new_config["executed_variants_file"] = os.path.abspath(os.path.join(project_root, orig_exec))
+
+    # Atualiza a configuração global (Isso fará o generator.py ver a nova strategy se ele usar CONFIG)
+    update_config(new_config)
     
-    # Garante que a pasta storage exista
+    # Recupera valores finais
+    input_file = CONFIG.get("input_file")
+    output_folder = CONFIG.get("output_folder")
+    executed_file = CONFIG.get("executed_variants_file")
+    operation_map = CONFIG.get("operations_map", {})
+    
+    # Recupera estratégia para log
+    strategy = CONFIG.get("strategy", "default")
+    max_vars = CONFIG.get("max_variantes", "unlimited")
+
+    force_print(f"--- Iniciando Geração de Variantes ---")
+    force_print(f"Input: {input_file}")
+    force_print(f"Output Dir: {output_folder}")
+    force_print(f"Strategy: {strategy} | Max Variants: {max_vars}")
+    force_print(f"Debug File: {debug_file}")
+    
+    if not input_file:
+        force_print("ERRO: Arquivo de entrada não especificado.")
+        return []
+
+    # Criar diretórios necessários
     try:
-        os.makedirs(base_path, exist_ok=True)
-        print(f"Diretório base criado: {base_path}")
+        os.makedirs(output_folder, exist_ok=True)
+        os.makedirs(os.path.dirname(debug_file), exist_ok=True)
+        os.makedirs(linhas_dir, exist_ok=True)
     except Exception as e:
-        print(f"Erro ao criar diretório base: {e}")
+        force_print(f"ERRO CRÍTICO ao criar diretórios: {e}")
+        return []
 
-    lines, modifiable_lines, physical_to_logical = parse_code(input_file)
-    print(f"Detectadas {len(modifiable_lines)} linhas modificáveis")
-    
-    variants = generate_variants(
-        lines, modifiable_lines, physical_to_logical, 
-        operation_map, output_folder, os.path.basename(input_file), 
-        executed_file
-    )
-    
-    # Imprime número de variantes para debug
-    print(f"Número de variantes geradas: {len(variants) if variants else 0}")
-    
-    # Verifica se variantes foram geradas
-    if not variants:
-        print("AVISO: Nenhuma variante foi gerada! Verifique a configuração e o arquivo de entrada.")
+    # Parse do código
+    try:
+        lines, modifiable_lines, physical_to_logical = parse_code(input_file)
+        force_print(f"Código analisado. {len(modifiable_lines)} linhas modificáveis encontradas.")
+    except Exception as e:
+        force_print(f"ERRO ao analisar código fonte: {e}")
         return []
     
-    # Cria a pasta para os arquivos individuais de linhas modificadas
-    linhas_dir = os.path.join(base_path, "linhas_modificadas")
+    # Geração das variantes
+    try:
+        # Nota: Assume-se que generate_variants lê 'strategy' e 'max_variantes' do CONFIG global
+        # ou que você atualizará generator.py se ele exigir argumentos explícitos.
+        # Como generator.py não foi fornecido, a atualização via CONFIG é a via correta aqui.
+        variants = generate_variants(
+            lines, modifiable_lines, physical_to_logical, 
+            operation_map, output_folder, os.path.basename(input_file), 
+            executed_file
+        )
+    except Exception as e:
+        force_print(f"ERRO na função generate_variants: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+    
+    num_variants = len(variants) if variants else 0
+    force_print(f"Geração finalizada. {num_variants} variantes geradas.")
     
     try:
-        # Cria o diretório para linhas modificadas
-        print(f"Tentando criar diretório para linhas modificadas: {linhas_dir}")
-        os.makedirs(linhas_dir, exist_ok=True)
-        print(f"Diretório para linhas modificadas criado com sucesso")
-    except Exception as e:
-        print(f"ERRO ao criar diretório para linhas modificadas: {e}")
+        with open(os.path.join(output_folder, ".variants_generated"), "w") as _f:
+            _f.write("done\n")
+    except Exception:
+        pass
     
-    # Extrai o nome da aplicação (sem extensão)
-    app_name = os.path.splitext(os.path.basename(input_file))[0]
+    if not variants:
+        force_print("AVISO: Lista de variantes vazia.")
+        return []
     
-    # Gera um arquivo individual para cada variante
-    for variant_file, variant_hash in variants:
-        # Compara variante com o original para identificar linhas modificadas
-        with open(variant_file, 'r') as vf:
-            variant_lines = vf.readlines()
-        
-        # Determina quais linhas foram modificadas
-        modified_indices = []
-        for idx in modifiable_lines:
-            if idx < len(lines) and idx < len(variant_lines):
-                if lines[idx].strip() != variant_lines[idx].strip():
-                    modified_indices.append(idx)
-        
-        # Converte índices físicos para lógicos
-        logical_modified = [physical_to_logical.get(idx) for idx in modified_indices if idx in physical_to_logical]
-        
-        # Cria o arquivo individual para esta variante com APENAS as linhas lógicas
-        individual_file = os.path.join(linhas_dir, f"{app_name}_linhas_{variant_hash}.txt")
-        with open(individual_file, 'w') as f:
-            # Escreve apenas os números das linhas lógicas modificadas, uma por linha
-            for logical_line in sorted(logical_modified):
-                f.write(f"{logical_line}\n")
-    
-    print(f"Criados {len(variants)} arquivos individuais de linhas modificadas em {linhas_dir}")
-    
-    # Garante que o arquivo de debug seja criado
-    print(f"Criando arquivo de debug em: {debug_file}")
-    # Certifique-se de que o diretório exista
-    os.makedirs(os.path.dirname(debug_file), exist_ok=True)
-    
-    # Mantém o arquivo de debug completo com todas as informações
-    if variants:
-        with open(debug_file, 'w') as f:
-            f.write(f"Arquivo original: {input_file}\n")
-            f.write(f"Total de variantes: {len(variants)}\n")
-            f.write(f"Linhas modificáveis: {modifiable_lines}\n\n")
-            
+    # Pós-processamento
+    force_print("Gerando metadados (arquivos de linhas modificadas)...")
+    try:
+        with open(debug_file, 'w') as f_debug:
+            f_debug.write(f"Ref: {input_file}\n")
+            f_debug.write(f"Strategy: {strategy}\n")
+            f_debug.write(f"Total: {num_variants}\n\n")
+
             for i, (variant_file, variant_hash) in enumerate(variants, 1):
-                f.write(f"Variante #{i}\n")
-                f.write(f"  Arquivo: {os.path.basename(variant_file)}\n")
-                f.write(f"  Hash: {variant_hash}\n")
-                
-                # Compara variante com o original para identificar linhas modificadas
                 with open(variant_file, 'r') as vf:
                     variant_lines = vf.readlines()
                 
-                modified_indices = []
+                modified_physical_indices = []
                 for idx in modifiable_lines:
                     if idx < len(lines) and idx < len(variant_lines):
                         if lines[idx].strip() != variant_lines[idx].strip():
-                            modified_indices.append(idx)
+                            modified_physical_indices.append(idx)
                 
-                f.write(f"  Linhas físicas modificadas: {modified_indices}\n")
-                logical_modified = [physical_to_logical.get(idx) for idx in modified_indices if idx in physical_to_logical]
-                f.write(f"  Linhas lógicas modificadas: {sorted(logical_modified)}\n")
+                logical_modified = sorted([physical_to_logical.get(idx) for idx in modified_physical_indices if idx in physical_to_logical])
                 
-                # Adiciona as linhas modificadas com o conteúdo
-                for idx in modified_indices:
-                    logical_idx = physical_to_logical.get(idx, "N/A")
-                    f.write(f"    Linha {idx} (lógica {logical_idx}):\n")
-                    f.write(f"      Original: {lines[idx].strip()}\n")
-                    f.write(f"      Modificada: {variant_lines[idx].strip()}\n")
+                individual_file = os.path.join(linhas_dir, f"linhas_{variant_hash}.txt")
+                with open(individual_file, 'w') as f_ind:
+                    for logical_line in logical_modified:
+                        f_ind.write(f"{logical_line}\n")
                 
-                f.write("\n" + "-"*60 + "\n\n")
+                f_debug.write(f"Variante #{i} [{variant_hash}]\n")
+                f_debug.write(f"  File: {os.path.basename(variant_file)}\n")
+                f_debug.write(f"  Modificações Lógicas: {logical_modified}\n")
+                f_debug.write("-" * 40 + "\n")
+                
+                if i % 500 == 0:
+                    force_print(f"Processados metadados de {i}/{num_variants} variantes...")
+
+        force_print(f"Metadados gerados com sucesso em: {linhas_dir}")
         
-        print(f"Arquivo de debug gerado: {debug_file}")
-    
-    print(f"Geração concluída. {len(variants)} variantes geradas.")
+    except Exception as e:
+        force_print(f"ERRO durante geração de metadados: {e}")
     
     return variants
-
 
 if __name__ == "__main__":
     main()

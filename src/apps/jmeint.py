@@ -18,7 +18,7 @@ JMEINT_CONFIG = {
     # Arquivos específicos da aplicação
     "jmeint_main_file": "data/applications/jmeint/src/jmeint.cpp", # Renomeado para clareza
     "tritri_source_file": "data/applications/jmeint/src/tritri.cpp", # Arquivo original que pode ter variantes
-    "train_data_input": "data/applications/jmeint/train.data/input/jmeint_500.data",
+    "train_data_input": "data/applications/jmeint/train.data/input/jmeint_10k.data",
 
     # Padrões de arquivos para variantes de tritri.cpp
     "source_pattern": "tritri_*.cpp", # Padrão para encontrar variantes de tritri.cpp

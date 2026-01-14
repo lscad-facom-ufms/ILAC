@@ -54,7 +54,7 @@ def save_modified_lines_for_bruteforce(variant_file, original_file, variant_hash
 # Dicionário de aplicações disponíveis
 AVAILABLE_APPS = {
     "blackscholes": "apps.blackscholes",
-    "kinematics": "apps.kinematics",
+    "inversek2j": "apps.inversek2j",
     "fft": "apps.fft",
     "jmeint": "apps.jmeint",
     "kmeans": "apps.kmeans",

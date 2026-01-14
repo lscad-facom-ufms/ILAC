@@ -1,6 +1,7 @@
 #include "complex.hpp"
-
+#include <approx.h>
 #include <cmath>
+#include <approx.h>
 
 void fftSinCos(float x, float* s, float* c) {
     *s = sin(-2 * PI * x);

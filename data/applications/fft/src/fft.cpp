@@ -3,6 +3,7 @@
 #include "fourier.hpp"
 #include <fstream>
 #include <time.h>
+#include <approx.h>
 
 static int* indices;
 static Complex* x;

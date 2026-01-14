@@ -76,31 +76,39 @@ void radix2DitCooleyTykeyFft(int K, int* indices, Complex* x, Complex* f)
                 Complex oI_val = x[indices[oI]];
                 
                 // Cálculos para parte real (produtos)
-			 //anotacao:
+                //anotacao:
                 float real_cos_product = oI_val.real * fftCos;
-			 //anotacao:
+                //anotacao:
                 float imag_sin_product = oI_val.imag * fftSin;
                 
                 // Cálculos para parte imaginária (produtos)
+                //anotacao:
                 float imag_cos_product = oI_val.imag * fftCos;
+                //anotacao:
                 float real_sin_product = oI_val.real * fftSin;
                 
                 // Termo comum em cálculos real
+                //anotacao:
                 float real_term = real_cos_product - imag_sin_product;
                 
                 // Termo comum em cálculos imaginários
+                //anotacao:
                 float imag_term = imag_cos_product + real_sin_product;
                 
                 // Cálculo final para eI.real
+                //anotacao:
                 x[indices[eI]].real = t.real + real_term;
                 
                 // Cálculo final para eI.imag
+                //anotacao:
                 x[indices[eI]].imag = t.imag + imag_term;
                 
                 // Cálculo final para oI.real
+                //anotacao:
                 x[indices[oI]].real = t.real - real_term;
                 
                 // Cálculo final para oI.imag
+                //anotacao:
                 x[indices[oI]].imag = t.imag - imag_term;
 
 

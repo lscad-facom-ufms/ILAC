@@ -16,5 +16,5 @@ BASE_CONFIG = {
     "failed_variants_file": "data/reference/falhas.txt",
     
     # Configurações do Prof5
-    "prof5_model": "prof5/models/APPROX_1.json"
+    "prof5_model": "data/models/APPROX_1.json"
 }
