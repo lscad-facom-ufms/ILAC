@@ -18,7 +18,7 @@
       // Decomposição para term1
       float cos_theta1 = cos(theta1);
       
-      //anotacao:
+          
       float term1 = l1 * cos_theta1;
 
       // Decomposição para term2

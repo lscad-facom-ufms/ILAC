@@ -7,19 +7,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections import deque
 import logging
-import threading # Importar a biblioteca de threading
+import threading
+import json
 
 # Importações gerais
 from config_base import BASE_CONFIG
 from database.variant_tracker import add_executed_variant, add_failed_variant
 from utils.logger import setup_logging, VariantStatusMonitor
 from utils.file_utils import ensure_dirs, short_hash, generate_report, save_checkpoint, load_checkpoint
-from code_parser import parse_code
 from hash_utils import gerar_hash_codigo_logico
 
 # Importações para o modo de poda de árvore
 from utils.pruning_tree import build_variant_tree, prune_branch, save_tree_to_file, save_tree_to_dot
 from utils.error_analyzer import calculate_error
+
+def get_cleanup_config(config):
+    """
+    Retorna a configuração correta para limpeza, independente do modo de execução.
+    Resolve o problema de KeyError no modo Força Bruta.
+    """
+    # Se estiver no modo Árvore de Poda, a config específica está aninhada
+    if 'pruning_config' in config and 'app_specific_config' in config['pruning_config']:
+        return {**config['base_config'], **config['pruning_config']['app_specific_config']}
+    
+    # Se estiver no modo Força Bruta, o config passado já é o dicionário de execução principal
+    return config
 
 def save_modified_lines_for_bruteforce(variant_file, original_file, variant_hash, app_module, config):
     """Compara uma variante com o original e salva os índices das linhas modificadas."""
@@ -58,20 +70,12 @@ AVAILABLE_APPS = {
     "fft": "apps.fft",
     "jmeint": "apps.jmeint",
     "kmeans": "apps.kmeans",
-    "sobel": "apps.sobel"  # <-- Adicione esta linha
+    "sobel": "apps.sobel"
 }
 
 def create_execution_workspace(app_name, execution_mode, base_config):
     """
     Cria um workspace específico para a execução baseado na aplicação e modo.
-    
-    Args:
-        app_name: Nome da aplicação (ex: 'jmeint', 'kinematics')
-        execution_mode: Modo de execução ('forcabruta' ou 'arvorepoda')
-        base_config: Configuração base do sistema
-        
-    Returns:
-        dict: Nova configuração com caminhos atualizados
     """
     # Timestamp para tornar a pasta única
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -92,7 +96,7 @@ def create_execution_workspace(app_name, execution_mode, base_config):
         "logs_dir": os.path.join(workspace_path, "logs"),
         "prof5_results_dir": os.path.join(workspace_path, "prof5_results"),
         "dump_dir": os.path.join(workspace_path, "dumps"),
-        "linhas_modificadas_dir": os.path.join(workspace_path, "linhas_modificadas"),  # NOVA PASTA
+        "linhas_modificadas_dir": os.path.join(workspace_path, "linhas_modificadas"),
         "executed_variants_file": os.path.join(workspace_path, "executed_variants.json"),
         "failed_variants_file": os.path.join(workspace_path, "failed_variants.json"),
         "checkpoint_file": os.path.join(workspace_path, "checkpoint.json")
@@ -106,7 +110,7 @@ def create_execution_workspace(app_name, execution_mode, base_config):
         execution_config["logs_dir"],
         execution_config["prof5_results_dir"],
         execution_config["dump_dir"],
-        execution_config["linhas_modificadas_dir"]  # CRIAR A NOVA PASTA
+        execution_config["linhas_modificadas_dir"]
     )
     
     # Criar arquivo de informações da execução
@@ -120,7 +124,6 @@ def create_execution_workspace(app_name, execution_mode, base_config):
     }
     
     info_file = os.path.join(workspace_path, "execution_info.json")
-    import json
     with open(info_file, 'w') as f:
         json.dump(execution_info, f, indent=2)
     
@@ -180,24 +183,33 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
 
     node.status = 'SIMULATING'
     
+    # Prepara config de limpeza seguro
+    cleanup_conf = get_cleanup_config(config)
+
     # 1. Gera a variante específica para este nó
-    variant_filepath, variant_hash = app_module.generate_specific_variant(
-        config['pruning_config']['original_lines'],
-        config['pruning_config']['physical_to_logical'],
-        node.modified_lines,
-        config['pruning_config']['app_specific_config']
-    )
-    node.variant_hash = variant_hash
+    try:
+        variant_filepath, variant_hash = app_module.generate_specific_variant(
+            config['pruning_config']['original_lines'],
+            config['pruning_config']['physical_to_logical'],
+            node.modified_lines,
+            config['pruning_config']['app_specific_config']
+        )
+        node.variant_hash = variant_hash
+    except Exception as e:
+        logging.error(f"Erro ao gerar variante específica para nó {node.name}: {e}")
+        node.status = 'FAILED'
+        return node
 
     # 2. Executa a simulação com Spike (Etapa 1)
-    variant_output_path, resume_context = app_module.simulate_variant(variant_filepath, variant_hash, config['base_config'], status_monitor, only_spike=True)
+    variant_output_path, resume_context = app_module.simulate_variant(
+        variant_filepath, variant_hash, config['base_config'], status_monitor, only_spike=True
+    )
 
     if variant_output_path is None:
         node.status = 'FAILED'
         add_failed_variant(variant_hash, "spike_simulation_failure", config['base_config']["failed_variants_file"], lock=db_lock)
         if hasattr(app_module, 'cleanup_variant_files'):
-            cleanup_config = {**config['base_config'], **config['pruning_config']['app_specific_config']}
-            app_module.cleanup_variant_files(variant_hash, cleanup_config)
+            app_module.cleanup_variant_files(variant_hash, cleanup_conf)
         prune_branch(node)
         return node
 
@@ -232,8 +244,7 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
         node.status = 'FAILED'
         add_failed_variant(variant_hash, "error_calculation_failure", config['base_config']["failed_variants_file"], lock=db_lock)
         if hasattr(app_module, 'cleanup_variant_files'):
-            cleanup_config = {**config['base_config'], **config['pruning_config']['app_specific_config']}
-            app_module.cleanup_variant_files(variant_hash, cleanup_config)
+            app_module.cleanup_variant_files(variant_hash, cleanup_conf)
         prune_branch(node)
         return node
 
@@ -249,8 +260,7 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
         prune_branch(node)
         logging.info(f"Nó {node.name} podado. Erro: {error:.4f} > Threshold: {threshold}")
         if hasattr(app_module, 'cleanup_variant_files'):
-            cleanup_config = {**config['base_config'], **config['pruning_config']['app_specific_config']}
-            app_module.cleanup_variant_files(variant_hash, cleanup_config)
+            app_module.cleanup_variant_files(variant_hash, cleanup_conf)
     else:
         # 5. Se o erro for aceitável, continua a execução com a etapa de profiling (Etapa 2)
         logging.info(f"Nó {node.name} aceito. Erro: {error:.4f} <= Threshold: {threshold}. Executando profiling.")
@@ -484,7 +494,7 @@ def main():
                             logging.info(f"Simulação da variante {short_hash(variant_hash)} concluída com sucesso")
                             add_executed_variant(variant_hash, execution_config["executed_variants_file"], lock=db_lock)
                             
-                            # Para KMEANS:
+                            # Para KMEANS e outros que salvam linhas
                             if hasattr(app_module, "KMEANS_CONFIG"):
                                 original_source_file = app_module.KMEANS_CONFIG["original_file"]
                             elif hasattr(app_module, "JMEINT_CONFIG"):

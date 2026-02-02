@@ -140,26 +140,38 @@ def generate_variants(base_config):
     input_path = os.path.abspath(config["input_file_for_variants"])
     executados = os.path.abspath(config.get("executed_variants_file", ""))
 
+    # --- COMANDO SEM LIMITE DE VARIANTES ---
     cmd = [
         sys.executable, "src/gera_variantes.py",
         "--input", input_path,
-        "--output", output_dir
+        "--output", output_dir,
+        "--strategy", "all" # Combinatorial completo sem --max_variantes
     ]
     if executados:
         cmd += ["--executados", executados]
 
-    logging.info(f"Gerando variantes FFT: {' '.join(cmd)}")
-    # Chamada direta (para aproveitar retornos/controle) - encaixe com jmeint
+    logging.info(f"Gerando variantes FFT (Modo ILIMITADO/Exaustivo): {' '.join(cmd)}")
+    
     try:
-        result = subprocess.run(cmd, cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), capture_output=True, text=True, timeout=300)
+        # Timeout aumentado para 1800s (30 min) para permitir geração massiva se necessário
+        result = subprocess.run(cmd, cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), capture_output=True, text=True, timeout=1800)
         logging.debug(f"gera_variantes returncode={result.returncode}")
         if result.stdout: logging.debug(result.stdout[:1000])
         if result.stderr: logging.debug(result.stderr[:1000])
     except Exception as e:
-        logging.warning(f"Falha ao executar gerador de variantes FFT: {e}")
-        # fallback: tentar chamar a função diretamente (se disponível)
+        logging.warning(f"Falha ao executar gerador de variantes FFT via subprocess: {e}")
+        # fallback
         try:
-            ok = gera_main({"input_file": input_path, "output_folder": output_dir, "executed_variants_file": executados})
+            opts = {
+                "input_file": input_path, 
+                "output_folder": output_dir, 
+                "executed_variants_file": executados,
+                "strategy": "all"
+                # Sem max_variantes no dict também
+            }
+            from config import update_config
+            update_config(opts)
+            ok = gera_main()
             return ok
         except Exception:
             return False
@@ -205,18 +217,26 @@ def find_variants_to_simulate(base_config):
 
     to_run = []
     # Adicionar a versão original (se ainda não executada)
-    original_hash = gerar_hash_codigo_logico(open(source_file, 'r', encoding='utf-8').read().splitlines(keepends=True), physical_to_logical)
-    if original_hash not in executed:
-        to_run.append((source_file, original_hash))
+    try:
+        with open(source_file, 'r', encoding='utf-8') as f:
+            orig_content = f.read().splitlines(keepends=True)
+        original_hash = gerar_hash_codigo_logico(orig_content, physical_to_logical)
+        if original_hash not in executed:
+            to_run.append((source_file, original_hash))
+    except Exception:
+        logging.warning("Não foi possível processar arquivo original para hash.")
 
     for f in files:
         if os.path.abspath(f) == os.path.abspath(source_file):
             continue
-        with open(f, 'r', encoding='utf-8') as fh:
-            variant_lines = fh.readlines()
-        variant_hash = gerar_hash_codigo_logico(variant_lines, physical_to_logical)
-        if variant_hash not in executed:
-            to_run.append((f, variant_hash))
+        try:
+            with open(f, 'r', encoding='utf-8') as fh:
+                variant_lines = fh.readlines()
+            variant_hash = gerar_hash_codigo_logico(variant_lines, physical_to_logical)
+            if variant_hash not in executed:
+                to_run.append((f, variant_hash))
+        except Exception as e:
+            logging.warning(f"Erro ao ler variante {f}: {e}")
 
     logging.info(f"TOTAL DE VARIANTES ENCONTRADAS: {len(to_run)}")
     return to_run, physical_to_logical
@@ -381,7 +401,7 @@ def calculate_custom_error(reference_file, variant_file):
     MRE = (1/N) * sum( |Ref - Var| / |Ref| )
     """
     try:
-        # Lê os arquivos convertendo para float (FFT gera saídas numéricas flutuantes)
+        # Lê os arquivos convertendo para float
         with open(reference_file, 'r') as f_ref:
             ref_data = [float(x) for x in f_ref.read().split()]
             
@@ -394,7 +414,7 @@ def calculate_custom_error(reference_file, variant_file):
             logging.error("[FFT Error] Arquivo de referência vazio.")
             return 1.0 
 
-        # Truncagem se tamanhos diferem (comportamento padrão de robustez)
+        # Truncagem se tamanhos diferem
         if len(ref_data) != len(var_data):
             logging.warning(f"[FFT Warning] Tamanhos diferem: Ref={len(ref_data)}, Var={len(var_data)}. Truncando.")
             min_len = min(len(ref_data), len(var_data))
@@ -404,15 +424,13 @@ def calculate_custom_error(reference_file, variant_file):
 
         # Cálculo do MRE acumulado
         sum_relative_error = 0.0
-        epsilon = 1e-10 # Pequeno valor para estabilidade na divisão
+        epsilon = 1e-10 
 
         for r, v in zip(ref_data, var_data):
             val_ref = abs(r)
             diff = abs(r - v)
             
-            # Tratamento para divisão por zero se o valor de referência for 0
             if val_ref < epsilon:
-                # Se ref é 0, usamos diferença absoluta amortecida ou 0 se ambos forem 0
                 relative_error = diff / (val_ref + epsilon)
             else:
                 relative_error = diff / val_ref
@@ -420,9 +438,7 @@ def calculate_custom_error(reference_file, variant_file):
             sum_relative_error += relative_error
         
         mre = sum_relative_error / total_points
-        
         logging.info(f"[FFT Metric] MRE: {mre:.6f}")
-        
         return mre
 
     except ValueError as e:
