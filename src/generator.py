@@ -5,7 +5,6 @@ from transformations import apply_transformation
 from database.variant_tracker import load_executed_variants
 from hash_utils import gerar_hash_codigo_logico
 
-# Adicionados argumentos limit e strategy na definição da função
 def generate_variants(lines, modifiable_lines, physical_to_logical, operation_map, output_folder, file_name, executed_file="executados.txt", limit=None, strategy="all"):
     """
     Gera variantes do código substituindo operações nas linhas modificáveis.
@@ -15,8 +14,11 @@ def generate_variants(lines, modifiable_lines, physical_to_logical, operation_ma
         limit: número máximo de variantes a gerar (segurança).
     """
     if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        print(f"Pasta de saída criada: {output_folder}")
+        try:
+            os.makedirs(output_folder)
+            print(f"Pasta de saída criada: {output_folder}")
+        except OSError as e:
+            print(f"Erro ao criar pasta: {e}")
 
     # Carrega as variantes já executadas para evitar duplicatas
     executed_variants = load_executed_variants(executed_file)
@@ -27,10 +29,10 @@ def generate_variants(lines, modifiable_lines, physical_to_logical, operation_ma
     
     # Lógica de Estratégia
     if strategy == "one_hot":
-        # Apenas combinações de 1 elemento
+        # Apenas combinações de 1 elemento (gera X variantes onde X = linhas modificáveis)
         range_comb = range(1, 2)
     else:
-        # Força Bruta / All: Combinações de 1 até N elementos (gera 1023 para 10 linhas)
+        # Força Bruta / All: Combinações de 1 até N elementos (gera 2^x variantes)
         range_comb = range(1, len(modifiable_lines) + 1)
 
     print(f"Iniciando geração. Estratégia: {strategy}, Modifiable Lines: {len(modifiable_lines)}")
@@ -42,8 +44,8 @@ def generate_variants(lines, modifiable_lines, physical_to_logical, operation_ma
             break
 
         for combination in combinations(modifiable_lines, r):
-            # Checagem de Limite Global
-            if limit and generated_count >= limit:
+            # Checagem de Limite Global dentro do loop interno
+            if limit is not None and generated_count >= int(limit):
                 print(f"Limite de variantes atingido ({limit}). Parando geração.")
                 return modified_files
 
@@ -69,14 +71,17 @@ def generate_variants(lines, modifiable_lines, physical_to_logical, operation_ma
             output_path = os.path.join(output_folder, output_file)
             
             # Salvamento do arquivo
-            with open(output_path, 'w', newline='') as f:
-                f.writelines(modified_lines)
-            
-            modified_files.append((output_path, codigo_hash))
-            generated_count += 1
-            
-            if generated_count % 500 == 0:
-                print(f"Geradas {generated_count} variantes até agora...")
+            try:
+                with open(output_path, 'w', newline='') as f:
+                    f.writelines(modified_lines)
+                
+                modified_files.append((output_path, codigo_hash))
+                generated_count += 1
+                
+                if generated_count % 500 == 0:
+                    print(f"Geradas {generated_count} variantes até agora...")
+            except Exception as e:
+                print(f"Erro ao salvar arquivo {output_file}: {e}")
     
     print(f"Geração finalizada.")
     print(f"Total de variantes novas geradas: {len(modified_files)}")

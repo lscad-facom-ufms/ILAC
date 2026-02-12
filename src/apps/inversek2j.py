@@ -16,8 +16,8 @@ from utils.prof5fake import contar_instrucoes_log, avaliar_modelo_energia
 # Configurações específicas para a aplicação KINEMATICS (Inversek2j)
 KINEMATICS_CONFIG = {
     # Arquivos específicos da aplicação
-    "inversek2j_main_file": "data/applications/inversek2j/src/inversek2j.cpp", # O arquivo Main (fixo)
-    "kinematics_source_file": "data/applications/inversek2j/src/kinematics.cpp", # O arquivo Kernel (variável)
+    "inversek2j_main_file": "data/applications/inversek2j/src/inversek2j.cpp", 
+    "kinematics_source_file": "data/applications/inversek2j/src/kinematics.cpp",
     "train_data_input": "data/applications/inversek2j/train.data/input/1k.data",
 
     # Padrões de arquivos para variantes
@@ -30,6 +30,10 @@ KINEMATICS_CONFIG = {
     # Parâmetros de geração de variantes
     "input_file_for_variants": "data/applications/inversek2j/src/kinematics.cpp",
     "operations_map": {'*': 'FMULX', '+': 'FADDX', '-': 'FSUBX'},
+
+    # -- ALTERAÇÃO AQUI: Definindo a estratégia e o limite --
+    "strategy": "all",       # Força gerar todas as combinações (2^x)
+    "max_variantes": 1000,    # Limite de segurança para não travar o disco (ajuste conforme necessário)
 
     # Parâmetros específicos de compilação
     "include_dir": "data/applications/inversek2j/src",
@@ -150,11 +154,18 @@ def generate_variants(base_config):
         output_path = os.path.abspath(config["input_dir"])
         executados_path = os.path.abspath(config["executed_variants_file"])
         
+        # Leitura da configuração
+        strategy = config.get("strategy", "one_hot")
+        max_vars = str(config.get("max_variantes", 100)) # Padrão 100 se não definido
+
         cmd = [
             "python3", "src/gera_variantes.py",
             "--input", input_path,
             "--output", output_path,
-            "--executados", executados_path
+            "--executados", executados_path,
+            # -- ALTERAÇÃO AQUI: Passando os novos argumentos --
+            "--strategy", strategy,
+            "--max_variantes", max_vars
         ]
         
         logging.debug(f"Executando comando de geração: {' '.join(cmd)}")
@@ -180,7 +191,7 @@ def generate_variants(base_config):
     except Exception as e:
         logging.error(f"Erro na geração de variantes: {e}")
         return False
-
+    
 def find_variants_to_simulate(base_config):
     """Identifica as variantes do kinematics que precisam ser simuladas"""
     config = {**base_config, **KINEMATICS_CONFIG}
