@@ -3,12 +3,14 @@ from anytree import Node, RenderTree
 
 class VariantNode(Node):
     """Nó na árvore de variantes, representando uma combinação de linhas modificadas."""
-    def __init__(self, name, modified_lines=None, parent=None, status='PENDING', error=None, variant_hash=None):
+    def __init__(self, name, modified_lines=None, parent=None, status='PENDING', error=None, variant_hash=None, energy=None, cost=None):
         super().__init__(name, parent)
         self.modified_lines = tuple(sorted(modified_lines)) if modified_lines is not None else tuple()
         self.status = status  # PENDING, SIMULATING, COMPLETED, PRUNED, FAILED
         self.error = error
         self.variant_hash = variant_hash
+        self.energy = energy  # Armazena a energia/tempo (profiling)
+        self.cost = cost      # Custo heurístico calculado (peso erro + energia)
 
 def build_variant_tree(modifiable_lines):
     """Constrói a árvore de variantes potenciais a partir de uma lista de números de linha modificáveis."""
@@ -39,10 +41,17 @@ def save_tree_to_file(root, filepath):
     """Salva a estrutura da árvore e o status em um arquivo de texto para visualização."""
     with open(filepath, 'w') as f:
         for pre, _, node in RenderTree(root):
+            details_list = [f"status={node.status}"]
+            
             if node.error is not None:
-                details = f"status={node.status}, error={node.error:.4f}"
-            else:
-                details = f"status={node.status}"
+                details_list.append(f"error={node.error:.4f}")
+            if getattr(node, 'energy', None) is not None and node.energy != float('inf'):
+                details_list.append(f"energy={node.energy:.4f}")
+            if getattr(node, 'cost', None) is not None:
+                details_list.append(f"cost={node.cost:.4f}")
+                
+            details = ", ".join(details_list)
+
             # Verificação de segurança para o hash
             if node.variant_hash and len(node.variant_hash) >= 8:
                 hash_info = f", hash={node.variant_hash[:8]}"
@@ -50,6 +59,7 @@ def save_tree_to_file(root, filepath):
                 hash_info = f", hash={node.variant_hash}"
             else:
                 hash_info = ""
+                
             f.write(f"{pre}{node.name} [{details}{hash_info}]\n")
 
 def save_tree_to_dot(root, filepath):
@@ -67,6 +77,8 @@ def save_tree_to_dot(root, filepath):
         label = f"{node_id_str}\\nStatus: {node.status}"
         if node.error is not None:
             label += f"\\nError: {node.error:.4f}"
+        if getattr(node, 'cost', None) is not None:
+            label += f"\\nCost: {node.cost:.4f}"
         
         color = {
             'COMPLETED': 'lightgreen',
