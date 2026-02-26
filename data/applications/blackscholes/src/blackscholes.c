@@ -15,6 +15,7 @@
 #include <iostream>
 #include <vector>
 #include <iomanip>
+#include "approx.h"
 
 
 //double max_otype, min_otype ;
@@ -67,7 +68,6 @@ int numError = 0;
 // See Hull, Section 11.8, P.243-244
 #define inv_sqrt_2xPI 0.39894228040143270286
 
-#pragma approx
 fptype CNDF ( fptype InputX ) 
 {
     int sign;
@@ -95,29 +95,46 @@ fptype CNDF ( fptype InputX )
     expValues = exp(-0.5f * InputX * InputX);
     xNPrimeofX = expValues;
     xNPrimeofX = xNPrimeofX * inv_sqrt_2xPI;
-
+    
+    //anotacao:
     xK2 = 0.2316419 * xInput;
+    //anotacao:
     xK2 = 1.0 + xK2;
     xK2 = 1.0 / xK2;
+    //anotacao:
     xK2_2 = xK2 * xK2;
+    //anotacao:
     xK2_3 = xK2_2 * xK2;
+    //anotacao:
     xK2_4 = xK2_3 * xK2;
+    //anotacao:
     xK2_5 = xK2_4 * xK2;
     
+    //anotacao:
     xLocal_1 = xK2 * 0.319381530;
+    //anotacao:
     xLocal_2 = xK2_2 * (-0.356563782);
+    //anotacao:
     xLocal_3 = xK2_3 * 1.781477937;
+    //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
+    //anotacao:
     xLocal_3 = xK2_4 * (-1.821255978);
+    //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
+    //anotacao:
     xLocal_3 = xK2_5 * 1.330274429;
+    //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
 
+    //anotacao:
     xLocal_1 = xLocal_2 + xLocal_1;
+    //anotacao:
     xLocal   = xLocal_1 * xNPrimeofX;
 
     //printf("# xLocal: %10.10f\n", xLocal);
 
+    //anotacao:
     xLocal   = 1.0 - xLocal;
 
     OutputX  = xLocal;
@@ -125,12 +142,12 @@ fptype CNDF ( fptype InputX )
     //printf("# Output: %10.10f\n", OutputX);
     
     if (sign) {
+        //anotacao:
         OutputX = 1.0 - OutputX;
     }
     
     return OutputX;
-} 
-#pragma endapprox
+}
 
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
