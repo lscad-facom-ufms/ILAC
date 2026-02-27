@@ -7,6 +7,7 @@
 
 #include "convolution.hpp"
 #include <cmath>
+#include "approx.h"
 
 int total = 0;
 static float kx[][3] =
@@ -25,14 +26,28 @@ static float ky[][3] =
 
 float convolve(float w[][3], float k[][3])
 {
-	float r ;
-	r = 0.0 ;
-	for( int j = 0 ; j < 3 ; j++ )
-		for ( int i = 0 ; i < 3 ; i++ )
-		{
-			r += w[i][j] * k[j][i] ;
-		}
-	return r ;
+    float r ;
+    float a ;
+    float b ;
+    float c ;
+    float tmp ;
+    
+
+    r = 0.0 ;
+    for( int j = 0 ; j < 3 ; j++ )
+        for ( int i = 0 ; i < 3 ; i++ )
+        {	
+            //r += w[i][j] * k[j][i] ;
+            a = w[i][j];
+            b = k[j][i];
+            //anotacao:
+            c = a * b;
+            tmp = r;
+            //anotacao:
+            tmp = tmp + c;
+            r = tmp;
+        }
+    return r ;
 }
 
 float sobel(float w[][3])

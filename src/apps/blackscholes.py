@@ -18,7 +18,7 @@ from utils.prof5fake import contar_instrucoes_log, avaliar_modelo_energia
 # Configurações específicas para a aplicação BLACKSCHOLES
 BLACKSCHOLES_CONFIG = {
     "original_file": "data/applications/blackscholes/src/blackscholes.c", 
-    "train_data_input": "data/applications/blackscholes/src/train.data/input/blackscholesTrain_500.data",
+    "train_data_input": "data/applications/blackscholes/src/train.data/input/blackscholesTrain_100K.data",
     "source_pattern": "blackscholes_*.c", 
     "exe_prefix": "blackscholes_",
     "output_suffix": ".data", 
@@ -28,7 +28,7 @@ BLACKSCHOLES_CONFIG = {
     "input_file_for_variants": "data/applications/blackscholes/src/blackscholes.c",
     "operations_map": {'*': 'FMULX', '+': 'FADDX', '-': 'FSUBX', '/': 'FDIVX'},
     "include_dir": "data/applications/blackscholes/src",
-    "optimization_level": "-O3", # Otimização recomendada para Blackscholes
+    "optimization_level": "-O", # Otimização recomendada para Blackscholes
 }
 
 def cleanup_variant_files(variant_hash, config):

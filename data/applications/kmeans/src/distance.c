@@ -9,16 +9,46 @@
 #include "distance.h"
 #include <math.h>
 #include <map>
+#include <approx.h>
 
 int count = 0;
 #define MAX_COUNT 1200000
 
+// float euclideanDistance(RgbPixel* p, Centroid* c1) {
+// 	float r;
+
+// 	r = 0;
+// 	double r_tmp;
+	
+// 	double dataIn[6];
+// 	dataIn[0] = p->r;
+// 	dataIn[1] = p->g;
+// 	dataIn[2] = p->b;
+// 	dataIn[3] = c1->r;
+// 	dataIn[4] = c1->g;
+// 	dataIn[5] = c1->b;
+
+// #pragma parrot(input, "kmeans", [6]dataIn)
+
+// 	r += (p->r - c1->r) * (p->r - c1->r);
+// 	r += (p->g - c1->g) * (p->g - c1->g);
+// 	r += (p->b - c1->b) * (p->b - c1->b);
+
+// 	r_tmp = sqrt(r);
+
+// #pragma parrot(output, "kmeans", <0.0; 1.0>r_tmp)
+
+// 	return r_tmp;
+// }
+
+#include <math.h>
+
 float euclideanDistance(RgbPixel* p, Centroid* c1) {
 	float r;
+	r = 0.0f;
 
-	r = 0;
 	double r_tmp;
-	
+
 	double dataIn[6];
 	dataIn[0] = p->r;
 	dataIn[1] = p->g;
@@ -29,9 +59,35 @@ float euclideanDistance(RgbPixel* p, Centroid* c1) {
 
 #pragma parrot(input, "kmeans", [6]dataIn)
 
-	r += (p->r - c1->r) * (p->r - c1->r);
-	r += (p->g - c1->g) * (p->g - c1->g);
-	r += (p->b - c1->b) * (p->b - c1->b);
+	// Red component
+
+	//anotacao:
+	float dr = p->r - c1->r;
+	//anotacao:
+	float dr_squared = dr * dr;
+	float temp_r1 = r;
+	//anotacao:
+	r = temp_r1 + dr_squared;
+
+	// Green component
+
+	//anotacao:
+	float dg = p->g - c1->g;
+	//anotacao:
+	float dg_squared = dg * dg;
+	float temp_r2 = r;
+	//anotacao:
+	r = temp_r2 + dg_squared;
+
+	// Blue component
+	
+	//anotacao:
+	float db = p->b - c1->b;
+	//anotacao:
+	float db_squared = db * db;
+	float temp_r3 = r;
+	//anotacao:
+	r = temp_r3 + db_squared;
 
 	r_tmp = sqrt(r);
 
@@ -66,4 +122,3 @@ void assignCluster(RgbPixel* p, Clusters* clusters) {
 		}
 	}
 }
-
