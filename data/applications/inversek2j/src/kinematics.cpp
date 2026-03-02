@@ -64,33 +64,33 @@
  #pragma parrot(input, "inversek2j", [2]dataIn)
  
       // Quadrados básicos
-      //anotacao:
+      
       float x_squared = x * x;
       
-      //anotacao:
+      
       float y_squared = y * y;
       
-      //anotacao:
+      
       float l1_squared = l1 * l1;
       
-      //anotacao:
+      
       float l2_squared = l2 * l2;
       
       // Decomposição do numerator: x^2 + y^2 - l1^2 - l2^2
-      //anotacao:
+      
       float num_tmp1 = x_squared + y_squared;
       
-      //anotacao:
+      
       float num_tmp2 = num_tmp1 - l1_squared;
       
-      //anotacao:
+      
       float numerator = num_tmp2 - l2_squared;
 
       // Decomposição do denominator: 2 * l1 * l2
-      //anotacao:
+      
       float denom_tmp = l1 * l2;
       
-      //anotacao:
+      
       float denominator = 2.0 * denom_tmp;
 
       // Cálculo de theta2: acos(num / den)
@@ -103,31 +103,31 @@
       float sin_theta2 = sin(*theta2);
 
       // term1 = l2 * cos(theta2)
-      //anotacao:
+      
       float term1 = l2 * cos_theta2;
 
       // term2 = l1 + term1
-      //anotacao:
+      
       float term2 = l1 + term1;
 
       // term3 = y * term2
-      //anotacao:
+      
       float term3 = y * term2;
 
       // term4 = x * l2
-      //anotacao:
+      
       float term4 = x * l2;
 
       // term5 = term4 * sin(theta2)
-      //anotacao:
+      
       float term5 = term4 * sin_theta2;
 
       // denominator2 = x^2 + y^2
-      //anotacao:
+      
       float denominator2 = x_squared + y_squared;
 
       // Cálculo final de theta1: asin((term3 - term5) / denominator2)
-      //anotacao:
+      
       float num_theta1 = term3 - term5;
       
       // Divisão não solicitada na lista (+,-,*), sem anotação

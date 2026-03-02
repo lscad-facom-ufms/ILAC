@@ -30,7 +30,7 @@ SOBEL_CONFIG = {
     "prof5_suffix": ".prof5",
     "prof5_model": "data/models/APPROX_1.json",
     "input_file_for_variants": "data/applications/sobel/src/convolution.cpp",
-    "input_file": "data/applications/sobel/train.data/input/32x32.rgb",
+    "input_file": "data/applications/sobel/train.data/input/1.rgb",
     "operations_map": {'*': 'FMULX', '+': 'FADDX', '-': 'FSUBX'},
     "include_dir": "data/applications/sobel/src",
     "optimization_level": "-O",

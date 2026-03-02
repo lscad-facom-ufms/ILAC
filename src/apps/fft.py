@@ -29,7 +29,7 @@ FFT_CONFIG = {
     ],
     
     # Argumento de entrada para a simulação (tamanho do vetor)
-    "train_data_input": "512", 
+    "train_data_input": "4096", 
     
     # Padrões de arquivos e sufixos
     "source_pattern": "fourier_*.cpp", 
