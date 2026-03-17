@@ -17,18 +17,7 @@
 #include <iomanip>
 #include "approx.h"
 
-
-//double max_otype, min_otype ;
-//double max_sptprice, min_sptprice;
-//double max_strike, min_strike;
-//double max_rate, min_rate ;
-//double max_volatility, min_volatility;
-//double max_otime, min_otime ;
-//double max_out_price, min_out_price;
-
-
 #define DIVIDE 120.0
-
 
 //Precision to use for calculations
 #define fptype float
@@ -60,9 +49,6 @@ fptype * volatility;
 fptype * otime;
 int numError = 0;
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 // Cumulative Normal Distribution Function
 // See Hull, Section 11.8, P.243-244
@@ -96,11 +82,11 @@ fptype CNDF ( fptype InputX )
     xNPrimeofX = expValues;
     xNPrimeofX = xNPrimeofX * inv_sqrt_2xPI;
     
-    //anotacao:
     xK2 = 0.2316419 * xInput;
-    //anotacao:
     xK2 = 1.0 + xK2;
     xK2 = 1.0 / xK2;
+    
+    // INÍCIO DAS 10 ANOTAÇÕES (Geram 2^10 = 1024 combinações)
     //anotacao:
     xK2_2 = xK2 * xK2;
     //anotacao:
@@ -110,39 +96,32 @@ fptype CNDF ( fptype InputX )
     //anotacao:
     xK2_5 = xK2_4 * xK2;
     
-    //anotacao:
     xLocal_1 = xK2 * 0.319381530;
-    //anotacao:
     xLocal_2 = xK2_2 * (-0.356563782);
+    
     //anotacao:
     xLocal_3 = xK2_3 * 1.781477937;
     //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
+    
     //anotacao:
     xLocal_3 = xK2_4 * (-1.821255978);
     //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
+    
     //anotacao:
     xLocal_3 = xK2_5 * 1.330274429;
     //anotacao:
     xLocal_2 = xLocal_2 + xLocal_3;
+    // FIM DAS ANOTAÇÕES
 
-    //anotacao:
     xLocal_1 = xLocal_2 + xLocal_1;
-    //anotacao:
     xLocal   = xLocal_1 * xNPrimeofX;
-
-    //printf("# xLocal: %10.10f\n", xLocal);
-
-    //anotacao:
     xLocal   = 1.0 - xLocal;
 
     OutputX  = xLocal;
-
-    //printf("# Output: %10.10f\n", OutputX);
     
     if (sign) {
-        //anotacao:
         OutputX = 1.0 - OutputX;
     }
     
@@ -150,18 +129,12 @@ fptype CNDF ( fptype InputX )
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////
 fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
                             fptype strike, fptype rate, fptype volatility,
                             fptype time, int otype, float timet, fptype* N1, fptype* N2)
 {
     fptype OptionPrice;
 
-    // local private working variables for the calculation
-    //fptype xStockPrice;
-    //fptype xStrikePrice;
     fptype xRiskFreeRate;
     fptype xVolatility;
     fptype xTime;
@@ -181,12 +154,9 @@ fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
     fptype NegNofXd1;
     fptype NegNofXd2;  
     
-    //xStockPrice = sptprice;
-    //xStrikePrice = strike;
     xRiskFreeRate = rate;
     xVolatility = volatility;
     xTime = time;
-
 
     xSqrtTime = sqrt(xTime);
 
@@ -194,15 +164,12 @@ fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
         
     xLogTerm = logValues;
         
-    
     xPowerTerm = xVolatility * xVolatility;
     xPowerTerm = xPowerTerm * 0.5;
         
     xD1 = xRiskFreeRate + xPowerTerm;
     xD1 = xD1 * xTime;
     xD1 = xD1 + xLogTerm;
-
-    
 
     xDen = xVolatility * xSqrtTime;
     xD1 = xD1 / xDen;
@@ -215,12 +182,10 @@ fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
 
     if(NofXd1 > 1.0)
         std::cerr << "Greater than one!" << std::endl ;
-    //printf("# d1: %10.10f\n", NofXd1);
 
     NofXd2 = CNDF( d2 );
     if(NofXd2 > 1.0)
          std::cerr << "Greater than one!" << std::endl ;
-    //printf("# d2: %10.10f\n", NofXd2);
 
     *N1 = NofXd1 ;
     *N2 = NofXd2 ;
@@ -228,7 +193,6 @@ fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
     FutureValueX = strike * ( exp( -(rate)*(time) ) );        
     if (otype == 0) {            
         OptionPrice = (sptprice * NofXd1) - (FutureValueX * NofXd2);
-        
     } else { 
         NegNofXd1 = (1.0 - NofXd1);
         NegNofXd2 = (1.0 - NofXd2);
@@ -238,7 +202,6 @@ fptype BlkSchlsEqEuroNoDiv( fptype sptprice,
     return OptionPrice;
 }
 
-
 double normalize(double in, double min, double max, double min_new, double max_new)
 {
     return (((in - min) / (max - min)) * (max_new - min_new)) + min_new ;
@@ -246,7 +209,6 @@ double normalize(double in, double min, double max, double min_new, double max_n
 
 int bs_thread(void *tid_ptr) {
     int i, j;
-
     int tid = *(int *)tid_ptr;
     int start = tid * (numOptions);
     int end = start + (numOptions);
@@ -254,9 +216,6 @@ int bs_thread(void *tid_ptr) {
 
     for (j=0; j<NUM_RUNS; j++) {
         for (i=start; i<end; i++) {
-            /* Calling main function to calculate option value based on 
-             * Black & Scholes's equation.
-             */
             fptype price;
             fptype N1, N2;
 
@@ -295,14 +254,11 @@ int main (int argc, char **argv)
     int * buffer2;
     int rv;
 
-
 	fflush(NULL);
-
 
     char *inputFile = argv[1];
     char *outputFile = argv[2];
 
-    //Read input data from file
     file = fopen(inputFile, "r");
     if(file == NULL) {
       printf("ERROR: Unable to open file `%s'.\n", inputFile);
@@ -315,8 +271,6 @@ int main (int argc, char **argv)
       exit(1);
     }
 
-
-    // alloc spaces for the option data
     data = (OptionData*)malloc(numOptions*sizeof(OptionData));
     prices = (fptype*)malloc(numOptions*sizeof(fptype));
     for ( loopnum = 0; loopnum < numOptions; ++ loopnum )
@@ -356,18 +310,14 @@ int main (int argc, char **argv)
         otime[i]      = data[i].t;
     }
 
-    //serial version
     int tid=0;
     bs_thread(&tid);
 
-
-    //Write prices to output file
     file = fopen(outputFile, "w");
     if(file == NULL) {
       printf("ERROR: Unable to open file `%s'.\n", outputFile);
       exit(1);
     }
-    //rv = fprintf(file, "%i\n", numOptions);
     if(rv < 0) {
       printf("ERROR: Unable to write to file `%s'.\n", outputFile);
       fclose(file);
@@ -392,4 +342,3 @@ int main (int argc, char **argv)
 
     return 0;
 }
-

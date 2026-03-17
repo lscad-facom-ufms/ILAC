@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import glob
+import inspect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections import deque
@@ -11,12 +12,18 @@ import logging
 import threading
 import json
 
+# Adicionar diretório raiz ao path para imports absolutos
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 # Importações gerais
-from config_base import BASE_CONFIG
-from database.variant_tracker import add_executed_variant, add_failed_variant
-from utils.logger import setup_logging, VariantStatusMonitor
-from utils.file_utils import ensure_dirs, short_hash, generate_report, save_checkpoint, load_checkpoint
-from hash_utils import gerar_hash_codigo_logico
+from src.config_base import BASE_CONFIG
+from src.database.variant_tracker import add_executed_variant, add_failed_variant
+from src.utils.logger import setup_logging, VariantStatusMonitor
+from src.utils.file_utils import ensure_dirs, short_hash, generate_report, save_checkpoint, load_checkpoint
+from src.hash_utils import gerar_hash_codigo_logico
 
 # Importações para o modo de poda de árvore
 from utils.pruning_tree import build_variant_tree, prune_branch, save_tree_to_file, save_tree_to_dot
@@ -230,18 +237,43 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
 
     node.energy = current_energy
 
-    # Função de Custo: Ponderação entre Erro e Redução de Energia
+    # Função de Custo: Ponderação normalizada entre Erro e Redução de Energia
     energy_ratio = current_energy / original_energy if original_energy > 0 else 1.0
-    heuristic_cost = (alpha * error) + ((1 - alpha) * energy_ratio)
+    
+    # Normalizar para escala 0-1
+    # energy_savings: 0 = sem economia, 1 = máxima economia
+    energy_savings = max(0.0, 1.0 - energy_ratio)
+    
+    # normalized_error: erro normalizado (0 = sem erro, 1 = 100% erro)
+    # Limitamos a 1.0 para manter na mesma escala
+    normalized_error = min(error, 1.0)
+    
+    # Custo normalizado: ambos componentes na escala 0-1
+    # - alpha=0: só importa economia de energia
+    # - alpha=1: só importa erro
+    # - alpha=0.5: erro e energia têm peso igual
+    heuristic_cost = (alpha * normalized_error) + ((1 - alpha) * energy_savings)
     node.cost = heuristic_cost
 
     if hasattr(app_module, 'save_modified_lines_txt'):
-        app_module.save_modified_lines_txt(node.modified_lines, variant_hash, config['base_config'])
+        try:
+            sig = inspect.signature(app_module.save_modified_lines_txt)
+            num_params = len(sig.parameters)
+            
+            if num_params == 4:
+                original_file = config['pruning_config']['source_file']
+                app_module.save_modified_lines_txt(variant_filepath, original_file, variant_hash, config['base_config'])
+            elif num_params == 3:
+                app_module.save_modified_lines_txt(node.modified_lines, variant_hash, config['base_config'])
+            else:
+                logging.warning(f"Assinatura inesperada com {num_params} parâmetros em save_modified_lines_txt")
+        except Exception as e:
+            logging.warning(f"Erro ao chamar save_modified_lines_txt: {e}")
 
     if heuristic_cost > threshold:
         node.status = 'PRUNED'
         prune_branch(node)
-        logging.info(f"Nó {node.name} podado. Custo: {heuristic_cost:.4f} (Err: {error:.4f}, E_Ratio: {energy_ratio:.4f}) > Thr: {threshold}")
+        logging.info(f"Nó {node.name} podado. Custo: {heuristic_cost:.4f} (Err: {normalized_error:.4f}, Savings: {energy_savings:.4f}) > Thr: {threshold}")
         if hasattr(app_module, 'cleanup_variant_files'):
             app_module.cleanup_variant_files(variant_hash, cleanup_conf)
     else:
@@ -366,7 +398,13 @@ def main():
     app_module_name = AVAILABLE_APPS[args.app]
     app_module = importlib.import_module(app_module_name)
 
-    if hasattr(app_module, f"{args.app.upper()}_CONFIG"):
+    # Atualiza configuração com os valores do app (suporta ambos os padrões: CONFIG ou get_config)
+    if hasattr(app_module, 'get_config'):
+        # Novo padrão (apps refatorados com classe)
+        app_config = app_module.get_config()
+        execution_config.update(app_config)
+    elif hasattr(app_module, f"{args.app.upper()}_CONFIG"):
+        # Padrão antigo (compatibilidade)
         execution_config.update(getattr(app_module, f"{args.app.upper()}_CONFIG"))
 
     app_module = setup_environment(args.app, execution_config)
@@ -412,22 +450,76 @@ def main():
                 for future in as_completed(futures):
                     file, variant_hash = futures[future]
                     try:
-                        result, _ = future.result() 
+                        result, resume_context = future.result() 
                         if result:
                             successful_variants += 1
                             add_executed_variant(variant_hash, execution_config["executed_variants_file"], lock=db_lock)
                             
-                            # Lógica para identificar o arquivo ORIGINAL e salvar linhas modificadas
-                            if hasattr(app_module, "KMEANS_CONFIG"):
-                                original_source_file = app_module.KMEANS_CONFIG["original_file"]
-                            elif hasattr(app_module, "JMEINT_CONFIG"):
-                                original_source_file = app_module.JMEINT_CONFIG["tritri_source_file"]
-                            # --- CORREÇÃO AQUI: Adicionado suporte explícito para FFT e Sobel ---
-                            elif hasattr(app_module, "FFT_CONFIG"):
-                                original_source_file = app_module.FFT_CONFIG["fourier_source_file"]
-                            elif hasattr(app_module, "SOBEL_CONFIG"):
-                                original_source_file = app_module.SOBEL_CONFIG["sobel_source_file"]
+                            # Procura arquivo de referência (da execução "original")
+                            exe_prefix = execution_config.get("exe_prefix", "app_")
+                            outputs_dir = execution_config["outputs_dir"]
+                            
+                            # Verifica se é a variante original
+                            is_original = False
+                            if hasattr(app_module, 'get_config'):
+                                app_config = app_module.get_config()
+                                original_file = app_config.get("original_file", "")
+                                is_original = (os.path.abspath(file) == os.path.abspath(original_file))
                             else:
+                                is_original = (variant_hash == "original")
+                            
+                            # Se for a versão original, salva como referência
+                            if is_original:
+                                ref_output = result + ".reference"
+                                try:
+                                    import shutil
+                                    shutil.copy(result, ref_output)
+                                    logging.info(f"Arquivo de referência salvo: {ref_output}")
+                                except Exception as e:
+                                    logging.warning(f"Não conseguiu salvar referência: {e}")
+                            else:
+                                # Procura arquivo de referência existente
+                                ref_pattern = os.path.join(outputs_dir, f"{exe_prefix}*.reference")
+                                ref_files = glob.glob(ref_pattern)
+                                
+                                # Calcula erro para variantes (só se já existir referência)
+                                if ref_files:
+                                    reference_file = ref_files[0]
+                                    variant_output = result
+                                    
+                                    if hasattr(app_module, 'calculate_custom_error'):
+                                        try:
+                                            error = app_module.calculate_custom_error(reference_file, variant_output)
+                                            if error is not None:
+                                                error_file = variant_output + ".error"
+                                                with open(error_file, 'w') as f:
+                                                    f.write(f"{error}\n")
+                                                logging.info(f"Erro calculado para {variant_hash}: {error:.6f}")
+                                            else:
+                                                logging.warning(f"calculate_custom_error retornou None para {variant_hash}")
+                                        except Exception as e:
+                                            logging.warning(f"Erro ao calcular métrica: {e}")
+                                else:
+                                    logging.warning(f"Nenhum arquivo de referência encontrado para calcular erro de {variant_hash}")
+                            
+                            # Lógica genérica para identificar o arquivo ORIGINAL
+                            # Usa reflexão: tenta get_config() primeiro, depois execution_config
+                            original_source_file = None
+                            
+                            # Tenta obter do método get_config() do app (para apps refatorados)
+                            if hasattr(app_module, 'get_config'):
+                                try:
+                                    app_config = app_module.get_config()
+                                    # Tenta diferentes chaves usadas nos apps
+                                    for key in ['original_file', 'kernel_source_file', 'tritri_source_file', 'fourier_source_file']:
+                                        if key in app_config:
+                                            original_source_file = app_config[key]
+                                            break
+                                except Exception:
+                                    pass
+                            
+                            # Fallback para execution_config
+                            if not original_source_file:
                                 original_source_file = execution_config.get("original_file", file)
 
                             save_modified_lines_for_bruteforce(file, original_source_file, variant_hash, app_module, execution_config)
@@ -461,6 +553,10 @@ def main():
                 "workspace": execution_config["workspace_path"]
             }
             generate_report(report_data, execution_config)
+            
+            # Gera relatório de métricas
+            generate_metrics_report(args, execution_config, execution_mode, successful_variants, failed_variants)
+            
             status_monitor.stop()
             return 0 if failed_variants == 0 else 1
         else:
@@ -474,10 +570,52 @@ def main():
         
         status_monitor.start()
         run_tree_pruning_mode(app_module, execution_config, status_monitor, args, db_lock)
+        
+        # Gera relatório de métricas para árvore de poda
+        generate_metrics_report(args, execution_config, "arvorePoda", 0, 0)
+        
         status_monitor.stop()
         return 0
     
     return 0
+
+
+def generate_metrics_report(args, execution_config, execution_mode, successful_variants, failed_variants):
+    """Gera o relatório de métricas após a execução."""
+    try:
+        from src.utils.metrics_collector import MetricsCollector
+        
+        app_name = args.app
+        workspace = execution_config.get("workspace_path", "storage")
+        
+        # Coleta métricas
+        collector = MetricsCollector(app_name, workspace)
+        collector.collect_all_variants()
+        
+        # Parâmetros da execução
+        execution_params = {
+            "mode": execution_mode,
+            "workers": args.workers,
+            "successful_variants": successful_variants,
+            "failed_variants": failed_variants
+        }
+        
+        if hasattr(args, 'alpha'):
+            execution_params["alpha"] = args.alpha
+        if hasattr(args, 'threshold'):
+            execution_params["threshold"] = args.threshold
+        
+        # Gera/acumula relatório
+        report_file = os.path.join(execution_config["logs_dir"], f"metrics_report_{app_name}.json")
+        output_file = collector.save_accumulated_report(report_file, execution_params)
+        
+        logging.info(f"Relatório de métricas salvo em: {output_file}")
+        
+        # Imprime resumo
+        collector.print_summary()
+        
+    except Exception as e:
+        logging.error(f"Erro ao gerar relatório de métricas: {e}")
 
 if __name__ == '__main__':
     sys.exit(main())

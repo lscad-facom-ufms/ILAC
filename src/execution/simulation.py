@@ -21,7 +21,7 @@ def run_spike_simulation(exe_file, input_file, output_file, spike_log_file, vari
     # Comando para execução do Spike
     sim_cmd = [
         "spike",
-        "--isa=RV32IMAFDC",
+        "--isa=RV32IMAFDCV",
         "-c",
         f"--log={spike_log_file}",
         "/opt/riscv/riscv32-unknown-elf/bin/pk",
@@ -37,7 +37,7 @@ def run_spike_simulation(exe_file, input_file, output_file, spike_log_file, vari
             sim_cmd,
             capture_output=True,
             text=True,
-            timeout=600  # ajuste se necessário
+            timeout=None  # Sem timeout
         )
         if result.returncode != 0:
             logging.error(f"[Variante {variant_id}] Erro na simulação (Spike):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
@@ -68,7 +68,7 @@ def run_prof5(exe_file, log_file, dump_file, prof5_model, prof5_executable,
     # Comando para execução do Prof5
     prof5_cmd = [
         prof5_executable,
-        "-i", "RV32IMAFDC",
+        "-i", "RV32IMAFDCV",
         "-l", log_file,
         "-d", dump_file,
         "-m", prof5_model,
