@@ -223,21 +223,23 @@ class SobelApp(BaseApp):
             self.cleanup_variant_files(resume_context["variant_hash"], config)
     
     def calculate_custom_error(self, reference_file: str, variant_file: str) -> Optional[float]:
-        """Calcula MRE entre duas saídas de imagem."""
+        """Calcula o NRMSE (Normalized Root Mean Square Error) entre duas saídas de imagem."""
+        import math
         try:
+            # Mantemos o leitor original do Sobel
             def read_img_floats(filepath):
                 with open(filepath, 'r') as f:
                     for line in f:
                         for part in line.replace(',', ' ').split():
                             try:
                                 yield float(part)
-                            except:
+                            except ValueError:
                                 pass
             
             ref_gen = read_img_floats(reference_file)
             var_gen = read_img_floats(variant_file)
             
-            sum_err = 0.0
+            sum_sq_err = 0.0
             count = 0
             
             for r in ref_gen:
@@ -246,15 +248,21 @@ class SobelApp(BaseApp):
                 except StopIteration:
                     break
                 
-                if r != 0:
-                    sum_err += abs((r - v) / r)
-                elif v != 0:
-                    sum_err += 1.0
+                # Diferença elevada ao quadrado (nova matemática)
+                sum_sq_err += (r - v) ** 2
                 count += 1
             
-            return sum_err / count if count > 0 else 1.0
+            if count == 0:
+                return 1.0
+                
+            # Calcula o RMSE
+            rmse = math.sqrt(sum_sq_err / count)
+            
+            # Normaliza pelo valor máximo de um pixel (255) para a escala 0.0 - 1.0
+            return min(rmse / 255.0, 1.0)
+            
         except Exception as e:
-            logging.error(f"Erro ao calcular MRE de Sobel: {e}")
+            logging.error(f"Erro ao calcular RMSE de Sobel: {e}")
             return None
 
 

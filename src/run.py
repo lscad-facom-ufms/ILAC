@@ -70,9 +70,9 @@ def save_modified_lines_for_bruteforce(variant_file, original_file, variant_hash
                 logging.warning(f"Nenhuma diferença encontrada entre variante {short_hash(variant_hash)} e original.")
 
     except FileNotFoundError:
-        logging.warning(f"Arquivo original '{original_file}' ou da variante '{variant_file}' não encontrado para salvar linhas modificadas.")
+        logging.warning(f"Arquivo original '{original_file}' ou da variante '{variant_file}' não encontrado para guardar linhas modificadas.")
     except Exception as e:
-        logging.error(f"Falha ao salvar índices de linhas modificadas para hash {variant_hash}: {e}")
+        logging.error(f"Falha ao guardar índices de linhas modificadas para hash {variant_hash}: {e}")
 
 AVAILABLE_APPS = {
     "blackscholes": "apps.blackscholes",
@@ -200,7 +200,18 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
     error = None
     if hasattr(app_module, 'calculate_custom_error'):
         error = app_module.calculate_custom_error(reference_output_path, variant_output_path)
+        
+        # --- CORREÇÃO: Guardar o erro customizado no disco ---
+        if error is not None:
+            error_file = f"{variant_output_path}.error"
+            try:
+                with open(error_file, 'w') as f:
+                    f.write(f"{error}\n")
+            except Exception as e:
+                logging.warning(f"Erro ao guardar ficheiro de erro customizado para {variant_hash}: {e}")
+        # -----------------------------------------------------
     else:
+        # A função genérica já guarda o ficheiro .error.json automaticamente
         accuracy_data = calculate_error(reference_output_path, variant_output_path)
         if accuracy_data is not None:
             try:
@@ -233,26 +244,21 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
             with open(prof5_file, 'r') as f:
                 current_energy = float(f.read().strip())
         except Exception as e:
-            logging.error(f"Falha ao ler energia para {node.name} no arquivo {prof5_file}: {e}")
+            logging.error(f"Falha ao ler energia para {node.name} no ficheiro {prof5_file}: {e}")
 
     node.energy = current_energy
 
-    # Função de Custo: Ponderação normalizada entre Erro e Redução de Energia
-    energy_ratio = current_energy / original_energy if original_energy > 0 else 1.0
-    
+    # === BLOCO ALTERADO: NOVA HEURÍSTICA E LÓGICA DE THRESHOLD ===
     # Normalizar para escala 0-1
-    # energy_savings: 0 = sem economia, 1 = máxima economia
-    energy_savings = max(0.0, 1.0 - energy_ratio)
-    
-    # normalized_error: erro normalizado (0 = sem erro, 1 = 100% erro)
-    # Limitamos a 1.0 para manter na mesma escala
+    energy_ratio = current_energy / original_energy if original_energy > 0 else 1.0
     normalized_error = min(error, 1.0)
     
-    # Custo normalizado: ambos componentes na escala 0-1
-    # - alpha=0: só importa economia de energia
-    # - alpha=1: só importa erro
-    # - alpha=0.5: erro e energia têm peso igual
-    heuristic_cost = (alpha * normalized_error) + ((1 - alpha) * energy_savings)
+    # Manter o cálculo de economia (savings) apenas para os logs e relatórios
+    energy_savings = max(0.0, 1.0 - energy_ratio)
+    
+    # Custo normalizado como soma de penalidades (Erro + Consumo)
+    # Ambas as variáveis remam na mesma direção: queremos minimizar as duas.
+    heuristic_cost = (alpha * normalized_error) + ((1 - alpha) * energy_ratio)
     node.cost = heuristic_cost
 
     if hasattr(app_module, 'save_modified_lines_txt'):
@@ -270,16 +276,18 @@ def process_node(node, app_module, config, threshold, reference_output_path, sta
         except Exception as e:
             logging.warning(f"Erro ao chamar save_modified_lines_txt: {e}")
 
-    if heuristic_cost > threshold:
+    # Aplicar o método do "Penhasco". O limiar atua EXCLUSIVAMENTE sobre o Erro.
+    if normalized_error > threshold:
         node.status = 'PRUNED'
         prune_branch(node)
-        logging.info(f"Nó {node.name} podado. Custo: {heuristic_cost:.4f} (Err: {normalized_error:.4f}, Savings: {energy_savings:.4f}) > Thr: {threshold}")
+        logging.info(f"Nó {node.name} podado. Erro crítico: {normalized_error:.4f} > Thr: {threshold} (Custo: {heuristic_cost:.4f}, E_econ: {energy_savings:.4f})")
         if hasattr(app_module, 'cleanup_variant_files'):
             app_module.cleanup_variant_files(variant_hash, cleanup_conf)
     else:
         node.status = 'COMPLETED'
-        logging.info(f"Nó {node.name} aceito. Custo: {heuristic_cost:.4f} <= Thr: {threshold}")
+        logging.info(f"Nó {node.name} aceite. Erro seguro: {normalized_error:.4f} <= Thr: {threshold} (Custo: {heuristic_cost:.4f})")
         add_executed_variant(variant_hash, config['base_config']["executed_variants_file"], lock=db_lock)
+    # =============================================================
 
     return node
 
@@ -288,7 +296,7 @@ def run_tree_pruning_mode(app_module, execution_config, status_monitor, args, db
     
     pruning_config = app_module.get_pruning_config(execution_config)
     if not pruning_config["modifiable_lines"]:
-        logging.warning("Nenhuma linha modificável encontrada. Abortando.")
+        logging.warning("Nenhuma linha modificável encontrada. A abortar.")
         return
 
     root = build_variant_tree(pruning_config["modifiable_lines"])
@@ -298,7 +306,7 @@ def run_tree_pruning_mode(app_module, execution_config, status_monitor, args, db
     reference_output_path, _ = app_module.simulate_variant(pruning_config['source_file'], original_hash, execution_config, status_monitor, only_spike=False)
     
     if not reference_output_path or not os.path.exists(reference_output_path):
-        logging.error("Falha ao gerar a saída de referência e profiling da versão original. Abortando.")
+        logging.error("Falha ao gerar a saída de referência e profiling da versão original. A abortar.")
         return
 
     original_prof5_pattern = os.path.join(execution_config["outputs_dir"], f"*{original_hash}*.prof5")
@@ -361,13 +369,47 @@ def run_tree_pruning_mode(app_module, execution_config, status_monitor, args, db
     save_tree_to_dot(root, tree_dot_path)
     logging.info(f"Execução de poda concluída. Grafo: {tree_dot_path}")
 
+    # === BLOCO ALTERADO: RANQUEAMENTO AUTOMÁTICO DAS MELHORES SOLUÇÕES ===
+    logging.info("--- RANQUEAMENTO DAS MELHORES VARIANTES ---")
+    
+    valid_variants = []
+    for node in root.descendants:
+        if node.status == 'COMPLETED' and getattr(node, 'cost', None) is not None:
+            valid_variants.append(node)
+    
+    valid_variants.sort(key=lambda x: x.cost)
+    
+    rank_report_path = os.path.join(execution_config["logs_dir"], f"top_variants_rank_{args.app}_{timestamp}.txt")
+    
+    with open(rank_report_path, "w") as rank_file:
+        header = f"{'Rank':<5} | {'Hash':<8} | {'Custo':<8} | {'Erro':<8} | {'Consumo (Rel.)':<14} | {'Linhas Modificadas'}"
+        logging.info(header)
+        rank_file.write(header + "\n")
+        rank_file.write("-" * 80 + "\n")
+        
+        for i, node in enumerate(valid_variants):
+            consumo_relativo = node.energy / original_energy if original_energy > 0 else 1.0
+            linha = f"#{i+1:<4} | {node.variant_hash[:8]:<8} | {node.cost:.4f}   | {node.error:.4f}   | {consumo_relativo:.4f}         | {list(node.modified_lines)}"
+            
+            if i < 10:  
+                logging.info(linha)
+            
+            rank_file.write(linha + "\n")
+            
+    logging.info(f"Ranking completo guardado em: {rank_report_path}")
+    # =====================================================================
+
 def main():
     os.environ["PATH"] = f"/opt/riscv/bin:{os.environ['PATH']}"
 
     parser = argparse.ArgumentParser(description='Simulador de variantes aproximadas')
     parser.add_argument('--app', type=str, default='kinematics', help=f'Tipo de aplicação. Opções: {", ".join(AVAILABLE_APPS.keys())}')
     parser.add_argument('--workers', type=int, default=0, help='Número de workers. 0 para usar CPU count - 1')
-    parser.add_argument('--threshold', type=float, default=0.05, help='Limiar máximo de custo permitido para evitar a poda.')
+    
+    # === BLOCO ALTERADO: TEXTO DO ARGPARSE ===
+    parser.add_argument('--threshold', type=float, default=0.05, help='Limiar máximo de erro tolerado (ex: 0.05 = 5%). Variantes acima deste erro serão podadas.')
+    # =========================================
+    
     parser.add_argument('--alpha', type=float, default=1.0, help='Peso do Erro na heurística de custo (0.0 a 1.0). Energia será (1 - alpha).')
 
     # GRUPO MUTUAMENTE EXCLUSIVO GARANTIDO
@@ -378,7 +420,7 @@ def main():
     args = parser.parse_args()
     
     if not check_dependencies():
-        sys.stderr.write("Dependências ausentes. Abortando execução.\n")
+        sys.stderr.write("Dependências ausentes. A abortar a execução.\n")
         return 1
     
     execution_mode = "forcabruta" if args.forcabruta else "arvorepoda"
@@ -468,17 +510,17 @@ def main():
                             else:
                                 is_original = (variant_hash == "original")
                             
-                            # Se for a versão original, salva como referência
+                            # Se for a versão original, guarda como referência
                             if is_original:
                                 ref_output = result + ".reference"
                                 try:
                                     import shutil
                                     shutil.copy(result, ref_output)
-                                    logging.info(f"Arquivo de referência salvo: {ref_output}")
+                                    logging.info(f"Ficheiro de referência guardado: {ref_output}")
                                 except Exception as e:
-                                    logging.warning(f"Não conseguiu salvar referência: {e}")
+                                    logging.warning(f"Não conseguiu guardar referência: {e}")
                             else:
-                                # Procura arquivo de referência existente
+                                # Procura ficheiro de referência existente
                                 ref_pattern = os.path.join(outputs_dir, f"{exe_prefix}*.reference")
                                 ref_files = glob.glob(ref_pattern)
                                 
@@ -499,10 +541,22 @@ def main():
                                                 logging.warning(f"calculate_custom_error retornou None para {variant_hash}")
                                         except Exception as e:
                                             logging.warning(f"Erro ao calcular métrica: {e}")
+                                            
+                                    # --- CORREÇÃO: Usar o cálculo genérico se a aplicação não tiver o customizado ---
+                                    else:
+                                        try:
+                                            # A função calculate_error genérica já guarda o .error.json na pasta outputs_dir
+                                            accuracy_data = calculate_error(reference_file, variant_output)
+                                            if accuracy_data is not None:
+                                                acc_val = float(accuracy_data.get('accuracy', 0.0)) if isinstance(accuracy_data, dict) else float(accuracy_data)
+                                                logging.info(f"Erro genérico calculado e guardado para {variant_hash}: {1.0 - acc_val:.6f}")
+                                        except Exception as e:
+                                            logging.warning(f"Erro ao calcular métrica genérica: {e}")
+                                    # --------------------------------------------------------------------------------
                                 else:
-                                    logging.warning(f"Nenhum arquivo de referência encontrado para calcular erro de {variant_hash}")
+                                    logging.warning(f"Nenhum ficheiro de referência encontrado para calcular erro de {variant_hash}")
                             
-                            # Lógica genérica para identificar o arquivo ORIGINAL
+                            # Lógica genérica para identificar o ficheiro ORIGINAL
                             # Usa reflexão: tenta get_config() primeiro, depois execution_config
                             original_source_file = None
                             
@@ -609,7 +663,7 @@ def generate_metrics_report(args, execution_config, execution_mode, successful_v
         report_file = os.path.join(execution_config["logs_dir"], f"metrics_report_{app_name}.json")
         output_file = collector.save_accumulated_report(report_file, execution_params)
         
-        logging.info(f"Relatório de métricas salvo em: {output_file}")
+        logging.info(f"Relatório de métricas guardado em: {output_file}")
         
         # Imprime resumo
         collector.print_summary()

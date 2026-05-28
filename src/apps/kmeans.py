@@ -242,8 +242,9 @@ class KMeansApp(BaseApp):
         finally:
             self.cleanup_variant_files(resume_context["variant_hash"], config)
     
-    def calculate_custom_error(self, reference_file: str, variant_file: str) -> Optional[float]:
-        """Calcula MRE baseado no CSV gerado pelo KMEANS."""
+def calculate_custom_error(self, reference_file: str, variant_file: str) -> Optional[float]:
+        """Calcula o NRMSE baseado no CSV gerado pelo KMEANS."""
+        import math
         try:
             ref_csv = reference_file.replace('.rgb', '.csv') if reference_file.endswith('.rgb') else reference_file
             var_csv = variant_file.replace('.rgb', '.csv') if variant_file.endswith('.rgb') else variant_file
@@ -252,7 +253,7 @@ class KMeansApp(BaseApp):
                 r_lines = f1.readlines()
                 v_lines = f2.readlines()
             
-            sum_err = 0.0
+            sum_sq_err = 0.0
             count = 0
             
             for r_line, v_line in zip(r_lines, v_lines):
@@ -260,15 +261,19 @@ class KMeansApp(BaseApp):
                 v_vals = [float(x) for x in v_line.strip().split(',')]
                 
                 for rv, vv in zip(r_vals, v_vals):
-                    if rv != 0:
-                        sum_err += abs((rv - vv) / rv)
-                    elif vv != 0:
-                        sum_err += 1.0
+                    # Diferença elevada ao quadrado
+                    sum_sq_err += (rv - vv) ** 2
                     count += 1
             
-            return sum_err / count if count > 0 else 1.0
+            if count == 0:
+                return 1.0
+                
+            rmse = math.sqrt(sum_sq_err / count)
+            # Normalizar pelo valor máximo de um pixel (255) para manter na escala 0.0 - 1.0
+            return min(rmse / 255.0, 1.0)
+            
         except Exception as e:
-            logging.error(f"Erro ao calcular MRE do Kmeans: {e}")
+            logging.error(f"Erro ao calcular RMSE do Kmeans: {e}")
             return None
 
 

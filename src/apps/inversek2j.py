@@ -35,7 +35,6 @@ class InverseK2JApp(BaseApp):
         "include_dir": "data/applications/inversek2j/src",
         "optimization_level": "-O",
         "strategy": "all",
-        "max_variantes": 10000,
     }
     
     REQUIRED_CONFIG_KEYS = [
